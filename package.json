@@ -10,6 +10,8 @@
     "dev:server": "npm run dev -w @cardetect/server",
     "dev:client": "npm run dev -w @cardetect/client",
     "build": "npm run build -w @cardetect/client",
+    "dist:client": "npm run dist -w @cardetect/client",
+    "dist:server": "npm run dist -w @cardetect/server",
     "test": "npm run test -w @cardetect/shared && npm run test -w @cardetect/server",
     "typecheck": "npm run typecheck -w @cardetect/shared && npm run typecheck -w @cardetect/server && npm run typecheck -w @cardetect/client"
   },

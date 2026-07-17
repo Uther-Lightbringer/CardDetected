@@ -18,7 +18,8 @@ interface SkinCtx {
   img: (key: string) => string | null;
 }
 
-const SKIN_BASE = '/assets/skins/default';
+// 相对路径：dev 下相对页面 URL（/），Electron 下相对 dist/index.html（file://）
+const SKIN_BASE = 'assets/skins/default';
 
 const Ctx = createContext<SkinCtx>({ manifest: null, img: () => null });
 

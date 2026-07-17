@@ -1,0 +1,15 @@
+appId: com.cardetect.client
+productName: CardDetect
+# 直接使用 node_modules 里已下载的 electron 运行时（离线可构建，避免从 GitHub 重复下载）
+electronDist: ../../node_modules/electron/dist
+# 不打成 asar：皮肤图片保持为普通文件，用户可直接替换（resources/app/dist/assets/skins/default/）
+asar: false
+directories:
+  output: release
+files:
+  - dist/**
+  - electron/**
+  - package.json
+win:
+  target:
+    - portable # 单文件绿色 exe，双击即用

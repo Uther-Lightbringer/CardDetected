@@ -16,10 +16,8 @@ import {
   type UserProfile,
 } from '@cardetect/shared';
 import { UserStore } from './store.js';
+import { loadAdminHtml } from './adminHtml.js';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ==================== 数据结构 ====================
 
@@ -49,13 +47,15 @@ export interface GameServerOptions {
 }
 
 export function startServer({ port, dataDir }: GameServerOptions): Server {
-  const store = new UserStore(path.join(dataDir ?? path.join(__dirname, '..', 'data'), 'users.json'));
+  // 数据文件默认放在「启动目录/data」下：exe 双击运行时即 exe 同级目录
+  const store = new UserStore(path.join(dataDir ?? path.join(process.cwd(), 'data'), 'users.json'));
   const clients = new Set<ClientConn>();
   const rooms = new Map<string, Room>();
   const startedAt = Date.now();
 
   const app = express();
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  const adminHtml = loadAdminHtml();
+  app.get(['/', '/admin.html'], (_req, res) => res.type('html').send(adminHtml));
 
   app.get('/api/status', (_req, res) => {
     res.json({

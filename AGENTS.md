@@ -18,6 +18,8 @@
 - `npm run test`：引擎单测 + 服务器 E2E（用 ws 模拟双客户端；E2E 占端口 9123，失败残留进程要手动 taskkill）。
 - `npm run typecheck` / `npm run build`：提交前必须通过。
 - 服务器：`npm run dev:server`（PORT/NO_OPEN 环境变量可调）。
+- 打包：`npm run dist:client`（Electron portable exe，electron-builder 配置了 electronDist 指向 node_modules 里的 electron 以离线构建；electron 二进制用 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ 下载，本机 GitHub 直连慢）；`npm run dist:server`（esbuild 打包 + Node SEA 注入，build-server.mjs 会把 admin.html 内嵌进 exe）。
+- 本机 shell 里有 `ELECTRON_RUN_AS_NODE=1`（VS Code 继承）：从命令行启动 electron 应用必须先 `env -u ELECTRON_RUN_AS_NODE`，否则表现为静默退出/node 报错。
 
 ## 约定
 - 全 ESM（`"type": "module"`），TS 文件互相 import 带 `.js` 后缀（NodeNext 要求）。

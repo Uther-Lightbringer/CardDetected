@@ -43,6 +43,20 @@ npm run dev:client   # 另开一个终端，启动客户端（http://localhost:5
 把同名图片文件放进该目录即可替换（如 `menu_bg.png`、`avatars/avatar_1.png`、`cards/sniper.png`），
 图片缺失时自动显示占位样式，无需改代码。
 
+## 打包为 Windows 可执行文件
+
+```bash
+npm run dist:client   # 客户端 → packages/client/release/CardDetect x.x.x.exe
+                      # （Electron 单文件绿色版，双击即桌面窗口，无控制台）
+npm run dist:server   # 服务器 → packages/server/release/CardDetectServer.exe
+                      # （Node SEA 单文件，管理面板已内嵌，双击启动并自动打开面板）
+```
+
+- 客户端 exe 的皮肤文件保持为普通文件（解包后位于 `resources/app/dist/assets/skins/default/`），直接替换图片即可换肤。
+- 服务器 exe 运行时把账号数据写入 **exe 同级目录的 `data/`**。
+- 两个 exe 均不依赖 Node.js 环境，可直接拷贝到其他 Windows 机器运行。
+- 注意：如果从 VS Code 的集成终端/脚本里启动客户端 exe，需先清除 `ELECTRON_RUN_AS_NODE` 环境变量（直接双击运行不受影响）。
+
 ## 测试与检查
 
 ```bash
