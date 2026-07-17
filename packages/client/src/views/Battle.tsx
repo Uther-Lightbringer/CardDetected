@@ -13,6 +13,7 @@ import {
   type UnitState,
 } from '@cardetect/shared';
 import type { BattleSession } from '../App';
+import { SYSTEM_PROMPT, type LlmDebugRecord } from '../ai/deepseek';
 import { AVATAR_FALLBACKS, SkinImage } from '../skin';
 
 type ExitDest = 'menu' | 'rematch' | 'room' | 'lobby';
@@ -49,7 +50,18 @@ export default function Battle({
   const [selectedHand, setSelectedHand] = useState<number | null>(null); // 单位牌选位
   const [spellSource, setSpellSource] = useState<number | null>(null); // 伤害法术选目标
   const [attacker, setAttacker] = useState<UnitRef | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugRecords, setDebugRecords] = useState<LlmDebugRecord[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
+
+  // 调试面板打开时每秒刷新一次记录（AI 可能正在思考）
+  useEffect(() => {
+    if (!showDebug || !adapter.getLlmDebugLog) return;
+    const refresh = (): void => setDebugRecords([...(adapter.getLlmDebugLog?.() ?? [])]);
+    refresh();
+    const timer = setInterval(refresh, 1000);
+    return () => clearInterval(timer);
+  }, [showDebug, adapter]);
 
   const mySide = adapter.mySide;
   const myTurn = !!view && view.current === mySide && !result && view.winner === null;
@@ -101,6 +113,9 @@ export default function Battle({
         case 'reveal':
           setRevealHand(e.hand as string[]);
           lines.push('🔍 你侦测了对手的手牌！');
+          break;
+        case 'ai_comment':
+          lines.push(`🗨 对手：「${e.text}」`);
           break;
       }
     }
@@ -336,6 +351,11 @@ export default function Battle({
         >
           {session.mode === 'single' ? '放弃对局' : '认输离开'}
         </button>
+        {adapter.getLlmDebugLog && (
+          <button className="btn btn-ghost btn-small" onClick={() => setShowDebug(true)}>
+            🔧 大模型调试
+          </button>
+        )}
         <div className="battle-log" ref={logRef}>
           {log.map((l, i) => <div key={i} className="log-line">{l}</div>)}
         </div>
@@ -359,6 +379,37 @@ export default function Battle({
               })}
             </div>
             <button className="btn" onClick={() => setRevealHand(null)}>关闭</button>
+          </div>
+        </div>
+      )}
+
+      {/* 大模型调试面板 */}
+      {showDebug && (
+        <div className="modal-mask" onClick={() => setShowDebug(false)}>
+          <div className="modal debug-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>🔧 大模型调试（输入/输出）</h3>
+            <div className="debug-list">
+              <details className="debug-record">
+                <summary>📌 系统提示词（固定不变）</summary>
+                <pre>{SYSTEM_PROMPT}</pre>
+              </details>
+              {debugRecords.length === 0 && <div className="empty-hint">还没有大模型调用记录（AI 回合后会出现）</div>}
+              {[...debugRecords].reverse().map((r, i) => (
+                <details key={i} className="debug-record" open={i === 0}>
+                  <summary>
+                    <span className={r.error ? 'debug-status fail' : 'debug-status ok'}>
+                      {r.error ? '✗ 失败' : '✓ 成功'}
+                    </span>
+                    第 {r.turn} 回合 · {r.at} · {r.durationMs}ms
+                  </summary>
+                  <div className="debug-label">📤 发送给模型的输入（user prompt）：</div>
+                  <pre>{r.prompt}</pre>
+                  <div className="debug-label">📥 模型的原始输出：</div>
+                  <pre>{r.error ? `⚠️ 错误：${r.error}` : r.response}</pre>
+                </details>
+              ))}
+            </div>
+            <button className="btn" onClick={() => setShowDebug(false)}>关闭</button>
           </div>
         </div>
       )}

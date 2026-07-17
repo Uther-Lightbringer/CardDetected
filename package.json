@@ -12,7 +12,7 @@
     "build": "npm run build -w @cardetect/client",
     "dist:client": "npm run dist -w @cardetect/client",
     "dist:server": "npm run dist -w @cardetect/server",
-    "test": "npm run test -w @cardetect/shared && npm run test -w @cardetect/server",
+    "test": "npm run test -w @cardetect/shared && npm run test -w @cardetect/server && npm run test -w @cardetect/client",
     "typecheck": "npm run typecheck -w @cardetect/shared && npm run typecheck -w @cardetect/server && npm run typecheck -w @cardetect/client"
   },
   "devDependencies": {

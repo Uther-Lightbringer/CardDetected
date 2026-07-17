@@ -2,6 +2,7 @@ import {
   applyAction,
   botTurn,
   buildStarterDeck,
+  CARDS,
   createGame,
   filterEventsFor,
   getView,
@@ -13,7 +14,7 @@ import {
 } from '@cardetect/shared';
 import type { WsClient } from '../net';
 import type { Settings } from '../settings';
-import { requestDeepseekActions } from '../ai/deepseek';
+import { requestDeepseekTurn, resolveAiAction, type LlmDebugRecord } from '../ai/deepseek';
 
 /** 对战 UI 与数据源之间的桥：单人（本地引擎+AI）与多人（服务器）共用 */
 export interface BattleCallbacks {
@@ -30,6 +31,8 @@ export interface BattleAdapter {
   /** 让适配器重发当前状态（组件挂载后调用一次） */
   refresh(): void;
   dispose(): void;
+  /** 大模型调试记录（仅单人模式的大模型对手提供） */
+  getLlmDebugLog?(): LlmDebugRecord[];
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -45,9 +48,31 @@ export class LocalAdapter implements BattleAdapter {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private disposed = false;
   private aiRunning = false;
+  /** 短期记忆：最近战况摘要，喂给大模型 */
+  private recentLog: string[] = [];
+  /** 大模型调用调试记录 */
+  private debugLog: LlmDebugRecord[] = [];
+
+  getLlmDebugLog(): LlmDebugRecord[] {
+    return this.debugLog;
+  }
 
   constructor(private settings: Settings) {
     this.state = createGame(buildStarterDeck(), buildStarterDeck(), Date.now() % 2147483647);
+  }
+
+  /** 把事件压缩成战况摘要（供大模型短期记忆使用） */
+  private summarize(events: GameEvent[]): void {
+    for (const e of events) {
+      const who = e.player === this.mySide ? '对手' : '你(AI)';
+      if (e.type === 'turn_start') this.recentLog.push(`T${e.turn}`);
+      else if (e.type === 'play_card') this.recentLog.push(`${who}打出「${CARDS[e.card as string]?.name ?? e.card}」`);
+      else if (e.type === 'attack') {
+        this.recentLog.push(`${who}的单位攻击${e.target === 'player' ? '对方玩家' : '单位'}(${e.damage}伤害)`);
+      } else if (e.type === 'death') this.recentLog.push(`「${CARDS[e.card as string]?.name ?? e.card}」阵亡`);
+      else if (e.type === 'fatigue') this.recentLog.push(`${who}疲劳受伤(${e.damage})`);
+    }
+    this.recentLog = this.recentLog.slice(-12);
   }
 
   refresh(): void {
@@ -68,6 +93,7 @@ export class LocalAdapter implements BattleAdapter {
 
   private push(events: GameEvent[]): void {
     if (this.disposed) return;
+    this.summarize(events);
     this.hooks.onUpdate(getView(this.state, this.mySide), filterEventsFor(events, this.mySide));
     if (this.state.winner !== null) {
       const w = this.state.winner;
@@ -85,42 +111,51 @@ export class LocalAdapter implements BattleAdapter {
       this.aiRunning = false;
       return;
     }
-    let actions: GameAction[];
-    let fromModel = false;
+    let modelActions: GameAction[] | null = null;
     if (this.settings.aiProvider === 'deepseek' && this.settings.deepseekKey) {
       try {
-        actions = await requestDeepseekActions(
+        const turn = await requestDeepseekTurn(
           this.settings.deepseekKey,
           this.settings.deepseekModel,
-          getView(this.state, this.aiSide),
+          this.state,
+          this.aiSide,
+          this.recentLog,
+          (record) => {
+            this.debugLog.push(record);
+            if (this.debugLog.length > 30) this.debugLog.shift();
+          },
         );
-        fromModel = true;
+        // 台词先上，再逐步执行动作
+        if (turn.comment) this.push([{ type: 'ai_comment', text: turn.comment }]);
+        modelActions = [];
+        // 逐步翻译执行：卡牌名在执行前一刻解析为当前 handIndex
+        for (const raw of turn.actions) {
+          if (this.disposed || this.state.winner !== null || this.state.current !== this.aiSide) break;
+          const ga = resolveAiAction(raw, this.state, this.aiSide);
+          if (!ga) continue;
+          const r = applyAction(this.state, this.aiSide, ga);
+          if (!r.ok) continue; // 幻觉出的非法动作：跳过
+          modelActions.push(ga);
+          this.state = r.state;
+          this.push(r.events);
+          await sleep(500);
+        }
       } catch {
-        actions = botTurn(this.state, this.aiSide);
+        modelActions = null; // 网络/解析失败：落回内置机器人
       }
-    } else {
-      actions = botTurn(this.state, this.aiSide);
     }
 
-    let succeeded = 0;
-    for (const a of actions) {
-      if (this.disposed || this.state.winner !== null || this.state.current !== this.aiSide) break;
-      const r = applyAction(this.state, this.aiSide, a);
-      if (!r.ok) continue; // 大模型幻觉出的非法动作：跳过
-      succeeded++;
-      this.state = r.state;
-      this.push(r.events);
-      await sleep(500);
-    }
-    // 大模型整段翻车时用内置机器人补打
-    if (fromModel && succeeded === 0 && !this.disposed && this.state.current === this.aiSide && this.state.winner === null) {
-      for (const a of botTurn(this.state, this.aiSide)) {
-        if (this.disposed || this.state.winner !== null || this.state.current !== this.aiSide) break;
-        const r = applyAction(this.state, this.aiSide, a);
-        if (!r.ok) continue;
-        this.state = r.state;
-        this.push(r.events);
-        await sleep(500);
+    // 非大模型模式、或大模型整段翻车时：内置机器人补打
+    if (modelActions === null || modelActions.length === 0) {
+      if (!this.disposed && this.state.current === this.aiSide && this.state.winner === null) {
+        for (const a of botTurn(this.state, this.aiSide)) {
+          if (this.disposed || this.state.winner !== null || this.state.current !== this.aiSide) break;
+          const r = applyAction(this.state, this.aiSide, a);
+          if (!r.ok) continue;
+          this.state = r.state;
+          this.push(r.events);
+          await sleep(500);
+        }
       }
     }
     // 兜底：AI 没主动结束回合则强制结束

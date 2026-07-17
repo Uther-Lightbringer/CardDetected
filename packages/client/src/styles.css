@@ -208,6 +208,22 @@ input:focus, select:focus { border-color: var(--amber); }
 .result-modal h2 { color: var(--amber); margin: 12px 0 8px; letter-spacing: 4px; }
 .result-modal p { color: var(--dim); margin-bottom: 8px; }
 
+/* 大模型调试面板 */
+.debug-modal { width: 720px; max-width: 94vw; text-align: left; }
+.debug-modal h3 { text-align: center; }
+.debug-list { max-height: 60vh; overflow-y: auto; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+.debug-record { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.debug-record summary { cursor: pointer; font-size: 13px; color: var(--text); user-select: none; }
+.debug-record pre {
+  white-space: pre-wrap; word-break: break-all; font-size: 12px; color: var(--dim);
+  background: var(--panel); border-radius: 6px; padding: 8px; margin: 6px 0;
+  max-height: 220px; overflow-y: auto; user-select: text; font-family: Consolas, monospace;
+}
+.debug-label { font-size: 12px; color: var(--amber); margin-top: 8px; }
+.debug-status { display: inline-block; margin-right: 8px; font-size: 12px; }
+.debug-status.ok { color: var(--green); }
+.debug-status.fail { color: var(--red); }
+
 .toast {
   position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
   background: var(--panel2); border: 1px solid var(--amber); color: var(--text);

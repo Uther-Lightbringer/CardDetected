@@ -1,77 +1,226 @@
-import { CARDS, type GameAction, type GameView } from '@cardetect/shared';
+import {
+  CARDS,
+  legalTargets,
+  type GameAction,
+  type GameState,
+  type PlayerIndex,
+  type Row,
+  type TargetRef,
+  type UnitRef,
+} from '@cardetect/shared';
 
 /**
  * Deepseek 大模型 AI 对手。
- * 把当前局面以文本形式发给模型，要求返回 JSON 动作序列；
- * 动作在本地由规则引擎逐一校验，非法动作会被跳过（调用方负责兜底）。
+ * 设计要点：
+ * - 把引擎算好的「合法攻击目标」「费用是否足够」直接写进 prompt，模型只做选择题
+ * - 出牌用卡牌名而不是 handIndex，规避模型数错下标的问题
+ * - response_format: json_object 强制合法 JSON
+ * - 附带最近战况（短期记忆）与一句侦探风台词（comment）
  */
 
-const SYSTEM_PROMPT = `你是一名卡牌对战游戏的高手，正在对局中轮到你行动。
-游戏规则：回合制 1v1，把对手血量打到 0 获胜。每回合法力上限+1并回满，用费出牌。
-战场每方有前排(front)和后排(back)各3格(序号0-2)。近战单位只能攻击敌方前排，敌方前排为空才能攻击后排或玩家("player")；
-带 ranged 的远程单位可攻击任意目标；带 guard 的单位必须被优先攻击；单位打出当回合不能攻击（charge 除外）。
-请根据局面输出你的完整回合动作序列，只输出 JSON，格式：
-{"actions":[
-  {"type":"play_card","handIndex":0,"row":"front","slot":0},
-  {"type":"play_card","handIndex":1,"row":"front","slot":0,"target":{"row":"front","slot":0}},
-  {"type":"attack","attacker":{"row":"front","slot":0},"target":"player"},
-  {"type":"end_turn"}
-]}
-注意：play_card 的 handIndex 是打出那一刻的手牌下标（每打出一张后续手牌下标前移）；
-法术"审讯"需要 target（敌方单位）；最后必须有 end_turn。不要输出任何解释。`;
+// ==================== 模型动作协议（与引擎 GameAction 解耦） ====================
 
-function describeView(view: GameView): string {
-  const hand = view.me.hand
-    .map((id, i) => {
-      const c = CARDS[id];
-      const stat = c.kind === 'unit' ? `${c.atk}/${c.hp}` : '';
-      const kw = c.keywords?.length ? ` 关键词:${c.keywords.join(',')}` : '';
-      return `  [${i}] ${c.name} ${c.cost}费 ${stat}${kw} - ${c.desc}`;
-    })
-    .join('\n');
-  const board = (b: GameView['me']['board'], label: string): string => {
-    const cell = (u: GameView['me']['board']['front'][number]): string =>
-      u ? `${u.name}(${u.atk}/${u.hp}${u.sick ? ',休整中' : ''}${u.attacked ? ',已攻击' : ''})` : '空';
-    return `  ${label}前排: [0]${cell(b.front[0])} [1]${cell(b.front[1])} [2]${cell(b.front[2])}\n  ${label}后排: [0]${cell(b.back[0])} [1]${cell(b.back[1])} [2]${cell(b.back[2])}`;
+export type AiAction =
+  | { type: 'play_card'; card?: string; handIndex?: number; row?: Row; slot?: number; target?: TargetRef }
+  | { type: 'attack'; attacker: UnitRef; target: TargetRef }
+  | { type: 'end_turn' };
+
+export interface AiTurn {
+  actions: AiAction[];
+  comment?: string;
+}
+
+const KW_CN: Record<string, string> = {
+  guard: '护卫', charge: '速攻', infiltrate: '渗透', ranged: '远程',
+};
+const ROW_CN: Record<Row, string> = { front: '前排', back: '后排' };
+
+/** 一次大模型调用的调试记录（输入/输出/耗时/错误） */
+export interface LlmDebugRecord {
+  turn: number;
+  at: string;
+  model: string;
+  durationMs: number;
+  prompt: string;
+  response?: string;
+  error?: string;
+}
+
+export const SYSTEM_PROMPT = `你是一名卡牌对战高手，扮演一名侦探与玩家进行 1v1 卡牌对战。轮到你行动时，根据局面输出这一整回合的动作序列。
+
+【规则速览】把对手血量打到 0 获胜。法力每回合上限+1并回满，出牌消耗法力。战场每方前排(front)后排(back)各3格(slot 0-2)。
+近战单位只能攻击敌方前排；敌方前排全空时，近战才能攻击后排或对方玩家("player")。远程单位可攻击任意目标。
+敌方有「护卫」时，攻击必须优先以护卫为目标。「渗透」单位无视前排阻挡。单位打出当回合不能攻击，「速攻」除外。
+法术「审讯」需要指定一个敌方单位作为 target。
+
+【输出要求】只输出一个 JSON 对象，不要输出任何解释或 markdown：
+{"comment":"一句简短的侦探风台词，展现你的自信或读心","actions":[动作序列]}
+动作格式：
+出牌 {"type":"play_card","card":"卡牌名","row":"front","slot":0}（row/slot 可省略，会自动安排）
+法术 {"type":"play_card","card":"审讯","target":{"row":"front","slot":0}}
+攻击 {"type":"attack","attacker":{"row":"front","slot":0},"target":"player"}（target 也可以是敌方单位 {"row":"back","slot":1}）
+结束 {"type":"end_turn"}（必须是最后一个动作）
+
+【重要】局面信息里已经帮你算好：每张手牌费用是否足够（★=本回合可打出）、每个可攻击单位的全部合法目标。
+出牌只用★标注的牌，攻击只从给出的合法目标里选，不要发明目标。`;
+
+// ==================== Prompt 构造 ====================
+
+function cellText(u: GameState['players'][0]['board']['front'][number]): string {
+  if (!u) return '空';
+  const kws = u.keywords.map((k) => KW_CN[k] ?? k).join('/');
+  const status = u.sick ? ',休整中' : u.attacked ? ',已攻击' : '';
+  return `${u.name}(${u.atk}/${u.hp}${kws ? ',' + kws : ''}${status})`;
+}
+
+/** 把当前局面 + 合法目标提示 + 最近战况渲染成给模型的文本 */
+export function buildPrompt(state: GameState, side: PlayerIndex, recentLog: string[]): string {
+  const me = state.players[side];
+  const foe = state.players[side === 0 ? 1 : 0];
+  const lines: string[] = [];
+
+  lines.push(`第 ${state.turn} 回合，轮到你行动。`);
+  lines.push(`你: 血量${me.hp}/${me.maxHp} 法力${me.mana}/${me.maxMana} 牌库${me.deck.length}张`);
+  lines.push(`对手: 血量${foe.hp} 手牌${foe.hand.length}张 牌库${foe.deck.length}张`);
+
+  // 手牌（标注费用是否足够）
+  lines.push('你的手牌（★=本回合费用足够可打出）:');
+  if (me.hand.length === 0) lines.push('  (无)');
+  me.hand.forEach((id) => {
+    const c = CARDS[id];
+    if (!c) return;
+    const star = c.cost <= me.mana ? '★' : '✩';
+    const stat = c.kind === 'unit' ? `${c.atk}/${c.hp}` : '法术';
+    const kws = c.keywords?.length ? ` 关键词:${c.keywords.map((k) => KW_CN[k] ?? k).join('/')}` : '';
+    lines.push(`  ${star}${c.name} ${c.cost}费 ${stat}${kws} - ${c.desc}`);
+  });
+
+  // 战场
+  const boardLine = (b: GameState['players'][0]['board'], label: string): void => {
+    lines.push(`  ${label}前排: [0]${cellText(b.front[0])} [1]${cellText(b.front[1])} [2]${cellText(b.front[2])}`);
+    lines.push(`  ${label}后排: [0]${cellText(b.back[0])} [1]${cellText(b.back[1])} [2]${cellText(b.back[2])}`);
   };
-  return `当前第 ${view.turn} 回合，轮到你行动。
-你的状态: 血量${view.me.hp}/${view.me.maxHp} 法力${view.me.mana}/${view.me.maxMana} 牌库${view.me.deckCount}张
-对手状态: 血量${view.opp.hp} 手牌${view.opp.handCount}张 牌库${view.opp.deckCount}张
-你的手牌:\n${hand || '  (无)'}
-${board(view.me.board, '你的')}
-${board(view.opp.board, '对手的')}
-请输出你的动作序列 JSON。`;
-}
+  lines.push('战场:');
+  boardLine(me.board, '你的');
+  boardLine(foe.board, '敌方');
 
-/** 从模型输出中提取 JSON 动作数组 */
-export function parseActions(text: string): GameAction[] | null {
-  try {
-    const cleaned = text.replace(/```(?:json)?/g, '').trim();
-    const start = cleaned.search(/[[{]/);
-    if (start === -1) return null;
-    const parsed = JSON.parse(cleaned.slice(start)) as { actions?: GameAction[] } | GameAction[];
-    const actions = Array.isArray(parsed) ? parsed : parsed.actions;
-    if (!Array.isArray(actions)) return null;
-    return actions.filter((a) => a && typeof a === 'object' && 'type' in a);
-  } catch {
-    // 尝试截取到最后一个完整 JSON 对象
-    try {
-      const m = text.match(/\{[\s\S]*"actions"[\s\S]*\]/);
-      if (!m) return null;
-      const parsed = JSON.parse(`${m[0]}}`) as { actions: GameAction[] };
-      return parsed.actions;
-    } catch {
-      return null;
-    }
+  // 合法攻击目标（模型直接做选择题）
+  lines.push('你可以执行的攻击（目标只能从列出的里面选）:');
+  let hasAttack = false;
+  for (const row of ['front', 'back'] as const) {
+    me.board[row].forEach((u, slot) => {
+      if (!u || u.sick || u.attacked) return;
+      const targets = legalTargets(state, side, { row, slot });
+      if (targets.length === 0) return;
+      hasAttack = true;
+      const tText = targets
+        .map((t) => {
+          if (t === 'player') return '对方玩家';
+          const tu = foe.board[t.row][t.slot];
+          return `敌方${ROW_CN[t.row]}[${t.slot}]${tu?.name ?? ''}`;
+        })
+        .join(' | ');
+      lines.push(`  你的${ROW_CN[row]}[${slot}]${u.name}(攻${u.atk}) → ${tText}`);
+    });
   }
+  if (!hasAttack) lines.push('  (本回合暂无可攻击单位)');
+
+  // 短期记忆
+  if (recentLog.length > 0) {
+    lines.push('最近战况:');
+    for (const l of recentLog.slice(-10)) lines.push(`  ${l}`);
+  }
+
+  lines.push('请输出你的回合动作 JSON。');
+  return lines.join('\n');
 }
 
-export async function requestDeepseekActions(
+// ==================== 模型输出解析 ====================
+
+/** 从模型输出中提取 { comment, actions }；尽量容错（markdown 围栏、前后废话） */
+export function parseModelResponse(text: string): AiTurn | null {
+  const cleaned = text.replace(/```(?:json)?/g, '').trim();
+  const start = cleaned.indexOf('{');
+  if (start === -1) return null;
+  // 从第一个 { 开始，找与其匹配的最后一个 }
+  const end = cleaned.lastIndexOf('}');
+  if (end <= start) return null;
+  let parsed: { comment?: unknown; actions?: unknown };
+  try {
+    parsed = JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed.actions)) return null;
+  const actions = parsed.actions.filter(
+    (a): a is AiAction => !!a && typeof a === 'object' && typeof (a as { type?: unknown }).type === 'string',
+  );
+  return {
+    actions,
+    comment: typeof parsed.comment === 'string' ? parsed.comment.slice(0, 60) : undefined,
+  };
+}
+
+// ==================== 动作翻译：卡牌名 → 引擎动作 ====================
+
+/**
+ * 把模型动作翻译成引擎 GameAction。
+ * 必须在执行前一刻针对当时的 state 调用（手牌下标随出牌变化）。
+ */
+export function resolveAiAction(raw: AiAction, state: GameState, side: PlayerIndex): GameAction | null {
+  if (raw.type === 'end_turn') return { type: 'end_turn' };
+
+  if (raw.type === 'attack') {
+    if (!raw.attacker || !raw.target) return null;
+    return { type: 'attack', attacker: raw.attacker, target: raw.target };
+  }
+
+  // play_card
+  const me = state.players[side];
+  let idx = -1;
+  if (typeof raw.card === 'string' && raw.card) {
+    idx = me.hand.findIndex((id) => id === raw.card || CARDS[id]?.name === raw.card);
+  }
+  if (idx === -1 && typeof raw.handIndex === 'number') idx = raw.handIndex; // 兼容旧格式
+  if (idx < 0 || idx >= me.hand.length) return null;
+
+  const def = CARDS[me.hand[idx]];
+  if (!def) return null;
+
+  if (def.kind === 'unit') {
+    let row: Row = raw.row === 'front' || raw.row === 'back' ? raw.row : def.keywords?.includes('ranged') ? 'back' : 'front';
+    let slot = typeof raw.slot === 'number' ? raw.slot : -1;
+    // 指定位置无效或被占时，自动找该排第一个空位
+    if (slot < 0 || slot > 2 || me.board[row][slot]) {
+      slot = me.board[row].findIndex((x) => x === null);
+    }
+    if (slot === -1) return null; // 该排已满
+    return { type: 'play_card', handIndex: idx, row, slot };
+  }
+
+  // 法术
+  if (def.effect?.kind === 'damage') {
+    if (!raw.target || raw.target === 'player') return null;
+    return { type: 'play_card', handIndex: idx, row: 'front', slot: 0, target: raw.target };
+  }
+  return { type: 'play_card', handIndex: idx, row: 'front', slot: 0 };
+}
+
+// ==================== API 调用 ====================
+
+export async function requestDeepseekTurn(
   apiKey: string,
   model: string,
-  view: GameView,
+  state: GameState,
+  side: PlayerIndex,
+  recentLog: string[],
+  onDebug?: (record: LlmDebugRecord) => void,
   timeoutMs = 20000,
-): Promise<GameAction[]> {
+): Promise<AiTurn> {
+  const prompt = buildPrompt(state, side, recentLog);
+  const startedAt = Date.now();
+  const at = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  let recorded = false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -85,18 +234,34 @@ export async function requestDeepseekActions(
       body: JSON.stringify({
         model: model || 'deepseek-chat',
         temperature: 0.2,
+        response_format: { type: 'json_object' }, // 强制合法 JSON
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: describeView(view) },
+          { role: 'user', content: prompt },
         ],
       }),
     });
     if (!res.ok) throw new Error(`Deepseek API 错误: ${res.status}`);
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const content = data.choices?.[0]?.message?.content ?? '';
-    const actions = parseActions(content);
-    if (!actions || actions.length === 0) throw new Error('大模型返回无法解析');
-    return actions;
+    // 先记录原始响应（即使后续解析失败也能看到模型实际输出）
+    onDebug?.({ turn: state.turn, at, model, durationMs: Date.now() - startedAt, prompt, response: content });
+    recorded = true;
+    const turn = parseModelResponse(content);
+    if (!turn || turn.actions.length === 0) throw new Error('大模型返回无法解析');
+    return turn;
+  } catch (e) {
+    if (!recorded) {
+      onDebug?.({
+        turn: state.turn,
+        at,
+        model,
+        durationMs: Date.now() - startedAt,
+        prompt,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
