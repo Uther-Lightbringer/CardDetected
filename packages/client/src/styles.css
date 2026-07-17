@@ -150,11 +150,11 @@ input:focus, select:focus { border-color: var(--amber); }
 .attack-hint { color: var(--red); font-size: 12px; animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .5; } }
 
-.board-row { display: flex; gap: 8px; justify-content: center; flex: 1; min-height: 0; }
+.board-row { display: flex; gap: 6px; justify-content: center; flex: 1; min-height: 0; }
 .mid-banner { text-align: center; font-size: 13px; color: var(--amber); letter-spacing: 2px; padding: 2px 0; }
 
 .slot {
-  width: 110px; border-radius: 10px; border: 1px solid var(--border);
+  width: 96px; border-radius: 10px; border: 1px solid var(--border);
   background: rgba(28,32,41,.85); position: relative; display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 6px 4px; transition: box-shadow .15s, border-color .15s;
 }
@@ -171,12 +171,35 @@ input:focus, select:focus { border-color: var(--amber); }
 .unit-art-fallback { font-size: 26px; }
 .unit-name { font-size: 12px; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unit-kws { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
-.kw { font-size: 10px; background: var(--panel2); color: var(--amber); border-radius: 4px; padding: 0 4px; }
+.kw { font-size: 10px; background: var(--panel2); color: var(--amber); border-radius: 4px; padding: 0 4px; cursor: help; }
+.kw.buff { color: var(--green); }
+.card-faction { font-size: 10px; color: var(--blue); text-align: center; cursor: help; }
+
+/* 悬停规则说明：关键词 / 门派 / 传功标签共用 */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 220px; white-space: normal; text-align: left;
+  background: rgba(12, 14, 19, .96); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 11px; line-height: 1.5; color: #dfe6ee;
+  z-index: 60; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+}
 .unit-stats { display: flex; justify-content: space-between; width: 100%; padding: 0 8px; margin-top: 4px; }
 .stat-atk { color: var(--amber); font-weight: bold; }
 .stat-hp { color: var(--green); font-weight: bold; }
 .stat-hp.hurt { color: var(--red); }
 .unit-sick { position: absolute; top: 4px; right: 4px; font-size: 10px; color: var(--dim); }
+.slot.unit.facedown { border-style: dashed; opacity: .92; }
+
+/* 埋伏区 */
+.trap-count { font-size: 12px; color: var(--dim); }
+.trap-row { display: flex; gap: 4px; margin-left: 8px; }
+.trap-slot {
+  min-width: 44px; max-width: 64px; padding: 3px 5px; border-radius: 6px; border: 1px dashed var(--border);
+  font-size: 10px; color: var(--dim); text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.trap-slot.filled { border-style: solid; border-color: var(--amber); color: var(--amber); }
 
 /* 手牌 */
 .hand { display: flex; gap: 8px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }

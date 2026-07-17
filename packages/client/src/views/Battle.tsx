@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CARDS,
+  FACTION_DEFS,
+  KEYWORD_DEFS,
   legalTargets,
   type GameEvent,
   type GameState,
   type GameView,
+  type Keyword,
   type PlayerIndex,
   type PlayerState,
   type Row,
@@ -21,7 +24,7 @@ type ExitDest = 'menu' | 'rematch' | 'room' | 'lobby';
 /** 用视角数据拼一个引擎可读的伪状态（仅棋盘与胜负字段是真实的） */
 function pseudoState(v: GameView): GameState {
   const mk = (hp: number, maxHp: number, board: PlayerState['board']): PlayerState => ({
-    hp, maxHp, mana: 0, maxMana: 0, deck: [], hand: [], fatigue: 0, board,
+    hp, maxHp, mana: 0, maxMana: 0, deck: [], hand: [], fatigue: 0, board, traps: [null, null, null],
   });
   const meP = mk(v.me.hp, v.me.maxHp, v.me.board);
   const oppP = mk(v.opp.hp, v.opp.maxHp, v.opp.board);
@@ -29,9 +32,15 @@ function pseudoState(v: GameView): GameState {
   return { players, turn: v.turn, current: v.current, uidCounter: 0, winner: v.winner };
 }
 
-const KW_NAMES: Record<string, string> = {
-  guard: '护卫', charge: '速攻', infiltrate: '渗透', ranged: '远程',
-};
+/** 关键词标签：悬停显示规则说明（文案统一来自 shared 的 KEYWORD_DEFS） */
+function KwTag({ kw }: { kw: Keyword }): JSX.Element {
+  const def = KEYWORD_DEFS[kw];
+  return (
+    <span className="kw" data-tip={def?.desc ?? ''}>
+      {def?.name ?? kw}
+    </span>
+  );
+}
 
 export default function Battle({
   session,
@@ -51,6 +60,7 @@ export default function Battle({
   const [revealHand, setRevealHand] = useState<string[] | null>(null);
   const [selectedHand, setSelectedHand] = useState<number | null>(null); // 单位牌选位
   const [spellSource, setSpellSource] = useState<number | null>(null); // 伤害法术选目标
+  const [buffSource, setBuffSource] = useState<number | null>(null); // 传功/淬毒选友方单位
   const [attacker, setAttacker] = useState<UnitRef | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [debugRecords, setDebugRecords] = useState<LlmDebugRecord[]>([]);
@@ -130,13 +140,27 @@ export default function Battle({
           later(1300, () => setTurnBanner(0));
           break;
         case 'play_card':
-          lines.push({ text: `${who}打出「${CARDS[e.card as string]?.name ?? e.card}」`, side });
+          // 对手盖放易容单位 / 布下埋伏时，引擎已抹掉 card 字段
+          if (e.card === undefined) {
+            lines.push({ text: e.trap ? `${who}布下一张埋伏` : `${who}盖放了一个单位`, side });
+          } else {
+            lines.push({ text: `${who}打出「${CARDS[e.card as string]?.name ?? e.card}」`, side });
+          }
+          break;
+        case 'trap_trigger':
+          lines.push({ text: `⚔️ 「${CARDS[e.card as string]?.name ?? e.card}」被触发！`, side });
+          break;
+        case 'unit_reveal':
+          lines.push({
+            text: `🎭 路人翻开真身：「${CARDS[e.card as string]?.name ?? e.card}」${e.forced ? '（被识破，当回合休整）' : ''}`,
+            side,
+          });
           break;
         case 'attack': {
           lines.push({
             text:
               e.target === 'player'
-                ? `${who}的单位直击对方侦探，造成 ${e.damage} 点伤害！`
+                ? `${who}的单位直击对方棋手，造成 ${e.damage} 点伤害！`
                 : `${who}的单位发起攻击（${e.damage} 伤害${e.counter ? `，被反击 ${e.counter}` : ''}）`,
             side,
           });
@@ -181,7 +205,23 @@ export default function Battle({
           break;
         case 'reveal':
           setRevealHand(e.hand as string[]);
-          lines.push({ text: '🔍 你侦测了对手的手牌！', side: 'me' });
+          lines.push({ text: '🔍 你识破了对手的手牌！', side: 'me' });
+          break;
+        case 'pollute':
+          lines.push({ text: `☠️ ${who}下毒：${e.amount} 张「蛊奴」被洗入${e.player === v.mySide ? '对手' : '你'}的牌库`, side });
+          break;
+        case 'purify':
+          lines.push({ text: `🍵 ${who}驱毒，移除了牌库中 ${e.removed} 张「蛊奴」`, side });
+          break;
+        case 'shuffle_deck':
+          lines.push({ text: `🌀 ${who}打乱了对手的牌库顺序`, side });
+          break;
+        case 'buff': {
+          lines.push({ text: `✨ ${who}施加了「${e.name}」`, side });
+          break;
+        }
+        case 'buff_expire':
+          lines.push({ text: `💨 「${e.name}」的效果消散了`, side: 'sys' });
           break;
         case 'ai_comment': {
           lines.push({ text: `🗨 对手：「${e.text}」`, side: 'opp' });
@@ -203,6 +243,7 @@ export default function Battle({
   const clearSelection = (): void => {
     setSelectedHand(null);
     setSpellSource(null);
+    setBuffSource(null);
     setAttacker(null);
   };
 
@@ -218,16 +259,24 @@ export default function Battle({
     const def = CARDS[view.me.hand[i]];
     if (!def) return;
     if (def.cost > view.me.mana) {
-      toast('法力不足');
+      toast('内力不足');
       return;
     }
     if (def.kind === 'unit') {
       setSelectedHand(selectedHand === i ? null : i);
       setSpellSource(null);
+      setBuffSource(null);
       setAttacker(null);
-    } else if (def.effect?.kind === 'damage') {
+    } else if (def.kind === 'buff') {
+      setBuffSource(buffSource === i ? null : i);
+      setSelectedHand(null);
+      setSpellSource(null);
+      setAttacker(null);
+    } else if ((def.effects ?? []).some((e) => e.actions.some((a) => a.kind === 'damage' || a.kind === 'reveal_unit'))) {
+      // 需要敌方单位目标的法术（袖里剑 / 照妖镜）：进入选目标流程
       setSpellSource(spellSource === i ? null : i);
       setSelectedHand(null);
+      setBuffSource(null);
       setAttacker(null);
     } else {
       adapter.act({ type: 'play_card', handIndex: i, row: 'front', slot: 0 });
@@ -237,6 +286,12 @@ export default function Battle({
 
   const clickMySlot = (row: Row, slot: number): void => {
     if (!myTurn || !view) return;
+    if (buffSource !== null) {
+      if (!view.me.board[row][slot]) return;
+      adapter.act({ type: 'play_card', handIndex: buffSource, row: 'front', slot: 0, target: { row, slot } });
+      clearSelection();
+      return;
+    }
     if (selectedHand !== null) {
       if (view.me.board[row][slot]) return;
       adapter.act({ type: 'play_card', handIndex: selectedHand, row, slot });
@@ -244,7 +299,7 @@ export default function Battle({
       return;
     }
     const unit = view.me.board[row][slot];
-    if (unit && !unit.sick && !unit.attacked) {
+    if (unit && canAttackUnit(unit)) {
       setAttacker(attacker && attacker.row === row && attacker.slot === slot ? null : { row, slot });
       setSelectedHand(null);
       setSpellSource(null);
@@ -282,6 +337,17 @@ export default function Battle({
     adapter.act({ type: 'end_turn' });
   };
 
+  /** 与引擎 legalTargets 一致的可攻击判定（带 self_ready 的易容单位休整中也可宣告攻击） */
+  const canAttackUnit = (unit: UnitState): boolean => {
+    if (unit.attacked) return false;
+    if (!unit.sick) return true;
+    if (!unit.faceDown) return false;
+    const def = CARDS[unit.cardId];
+    return !!(def?.effects ?? []).some(
+      (e) => e.trigger === 'on_reveal' && e.actions.some((a) => a.kind === 'self_ready'),
+    );
+  };
+
   if (!view) return <div className="page"><div className="empty-hint">对局加载中…</div></div>;
 
   const winnerIsMe = result && result.winner === mySide;
@@ -307,7 +373,25 @@ export default function Battle({
       );
     }
     const def = CARDS[unit.cardId];
-    const idle = opts.mine && (unit.sick || unit.attacked);
+    const idle = opts.mine && !canAttackUnit(unit);
+    // 对手盖放的易容单位：渲染为 1/1 路人，不显示关键词与 buff
+    if (unit.faceDown && !opts.mine) {
+      return (
+        <div
+          className={`slot unit facedown ${opts.highlight ? 'targetable' : ''} ${opts.extraClass ?? ''}`}
+          onClick={opts.onClick}
+          title="易容：盖放的路人，真身未知"
+        >
+          <span className="unit-art-fallback">🎭</span>
+          <div className="unit-name">路人</div>
+          <div className="unit-stats">
+            <span className="stat-atk">{unit.atk}</span>
+            <span className="stat-hp">{unit.hp}</span>
+          </div>
+          {opts.floaters?.map((f) => <span key={f.id} className="floater">{f.text}</span>)}
+        </div>
+      );
+    }
     return (
       <div
         className={`slot unit ${opts.highlight ? 'targetable' : ''} ${opts.selected ? 'selected' : ''} ${idle ? 'idle' : ''} ${opts.mine && myTurn && !idle ? 'ready' : ''} ${opts.extraClass ?? ''}`}
@@ -317,13 +401,20 @@ export default function Battle({
         <SkinImage skinKey={def?.art ?? ''} alt={unit.name} className="unit-art" fallback={<span className="unit-art-fallback">🂠</span>} />
         <div className="unit-name">{unit.name}</div>
         {unit.keywords.length > 0 && (
-          <div className="unit-kws">{unit.keywords.map((k) => <span key={k} className="kw">{KW_NAMES[k] ?? k}</span>)}</div>
+          <div className="unit-kws">{unit.keywords.map((k) => <KwTag key={k} kw={k} />)}</div>
+        )}
+        {unit.buffs.length > 0 && (
+          <div className="unit-kws">
+            {unit.buffs.map((b, bi) => (
+              <span key={bi} className="kw buff" data-tip={CARDS[b.cardId]?.desc ?? ''}>{b.name}</span>
+            ))}
+          </div>
         )}
         <div className="unit-stats">
           <span className="stat-atk">{unit.atk}</span>
           <span className={unit.hp < unit.maxHp ? 'stat-hp hurt' : 'stat-hp'}>{unit.hp}</span>
         </div>
-        {unit.sick && opts.mine && <div className="unit-sick">休整中</div>}
+        {unit.sick && opts.mine && !canAttackUnit(unit) && <div className="unit-sick">休整中</div>}
         {opts.floaters?.map((f) => <span key={f.id} className="floater">{f.text}</span>)}
       </div>
     );
@@ -370,7 +461,7 @@ export default function Battle({
     const def = CARDS[cardId];
     if (!def) return <div key={i} />;
     const affordable = myTurn && def.cost <= view.me.mana;
-    const selected = selectedHand === i || spellSource === i;
+    const selected = selectedHand === i || spellSource === i || buffSource === i;
     return (
       <div
         key={`${cardId}-${i}`}
@@ -379,14 +470,17 @@ export default function Battle({
         title={def.desc}
       >
         <div className="card-cost">{def.cost}</div>
-        <SkinImage skinKey={def.art ?? ''} alt={def.name} className="card-art" fallback={<span className="card-art-fallback">{def.kind === 'unit' ? '🕵️' : '📜'}</span>} />
+        <SkinImage skinKey={def.art ?? ''} alt={def.name} className="card-art" fallback={<span className="card-art-fallback">{def.kind === 'unit' ? '🗡️' : '📜'}</span>} />
         <div className="card-name">{def.name}</div>
+        {def.faction && (
+          <div className="card-faction" data-tip={FACTION_DEFS[def.faction].desc}>{FACTION_DEFS[def.faction].name}</div>
+        )}
         <div className="card-desc">{def.desc}</div>
         {def.kind === 'unit' && (
           <div className="card-stats"><span className="stat-atk">{def.atk}</span><span className="stat-hp">{def.hp}</span></div>
         )}
         {def.kind === 'unit' && def.keywords && def.keywords.length > 0 && (
-          <div className="unit-kws">{def.keywords.map((k) => <span key={k} className="kw">{KW_NAMES[k] ?? k}</span>)}</div>
+          <div className="unit-kws">{def.keywords.map((k) => <KwTag key={k} kw={k} />)}</div>
         )}
       </div>
     );
@@ -409,6 +503,7 @@ export default function Battle({
           <div className="hero-numbers">
             <span key={hpPulse.opp} className={hpPulse.opp > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.opp.hp}</span>
             <span className="mana">◆ {view.opp.mana}/{view.opp.maxMana}</span>
+            <span className="trap-count">埋伏 {view.opp.trapCount}/3</span>
           </div>
           {attacker && legal.includes('player') && <span className="attack-hint">可攻击</span>}
           {floaters.filter((f) => f.side === 'opp' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
@@ -440,7 +535,7 @@ export default function Battle({
           {view.me.board.front.map((u, i) =>
             renderBoardSlot(u, 'me', 'front', i, {
               onClick: () => clickMySlot('front', i),
-              highlight: selectedHand !== null && !u,
+              highlight: (selectedHand !== null && !u) || (buffSource !== null && !!u),
               selected: !!attacker && attacker.row === 'front' && attacker.slot === i,
             }),
           )}
@@ -449,7 +544,7 @@ export default function Battle({
           {view.me.board.back.map((u, i) =>
             renderBoardSlot(u, 'me', 'back', i, {
               onClick: () => clickMySlot('back', i),
-              highlight: selectedHand !== null && !u,
+              highlight: (selectedHand !== null && !u) || (buffSource !== null && !!u),
               selected: !!attacker && attacker.row === 'back' && attacker.slot === i,
             }),
           )}
@@ -465,6 +560,14 @@ export default function Battle({
           <div className="hero-numbers">
             <span key={hpPulse.me} className={hpPulse.me > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.me.hp}</span>
             <span className="mana">◆ {view.me.mana}/{view.me.maxMana}</span>
+          </div>
+          {/* 我的埋伏区：可见卡名 */}
+          <div className="trap-row">
+            {view.me.traps.map((t, i) => (
+              <span key={i} className={`trap-slot ${t ? 'filled' : ''}`} title={t ? CARDS[t]?.desc : '空埋伏位'}>
+                {t ? CARDS[t]?.name ?? '?' : '·'}
+              </span>
+            ))}
           </div>
           {floaters.filter((f) => f.side === 'me' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
         </div>
@@ -557,7 +660,7 @@ export default function Battle({
         <div className="modal-mask">
           <div className="modal result-modal">
             <div className="result-icon">{winnerIsMe ? '🏆' : '💀'}</div>
-            <h2>{winnerIsMe ? '案件告破！' : '悬案未解…'}</h2>
+            <h2>{winnerIsMe ? '棋高一着！' : '满盘皆输…'}</h2>
             <p>{result.reason}</p>
             <div className="form-actions">
               {session.mode === 'single' ? (

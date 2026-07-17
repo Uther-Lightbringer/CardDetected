@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "tsx test/engine.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "selfplay": "tsx scripts/selfplay.ts"
   }
 }
