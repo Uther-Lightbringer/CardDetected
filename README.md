@@ -1,0 +1,65 @@
+# CardDetect · 疑案追凶
+
+现代侦探题材的联机 1v1 卡牌对战游戏。TypeScript 全栈 monorepo。
+
+> 玩法设计文档见 [DESIGN.md](./DESIGN.md)。
+
+## 项目结构
+
+```
+packages/
+├── shared/    # @cardetect/shared —— 规则引擎、卡牌定义、联机协议、内置机器人（前后端共用）
+├── server/    # @cardetect/server —— 游戏服务器：WebSocket + 账号/房间 + 可视化管理面板
+└── client/    # @cardetect/client —— 游戏客户端：React + Vite（单人/多人/设置/皮肤系统）
+```
+
+## 快速开始
+
+```bash
+npm install          # 安装全部依赖（npm workspaces）
+
+npm run dev:server   # 启动游戏服务器（默认端口 9000，自动打开管理面板 http://127.0.0.1:9000/admin.html）
+npm run dev:client   # 另开一个终端，启动客户端（http://localhost:5173）
+```
+
+## 玩法模式
+
+### 单人游戏
+客户端主菜单 → 单人游戏，与 AI 对战。AI 类型在「设置」里选择：
+- **内置机器人**：本地贪心策略，无需联网。
+- **Deepseek 大模型**：填入自己的 API Key 后，由 `deepseek-chat` 模型决策出牌；
+  大模型超时/返回非法动作时自动用内置机器人兜底。Key 仅保存在浏览器 localStorage。
+
+### 多人游戏
+1. 一方先启动游戏服务器（`npm run dev:server`），把 `<本机IP>:9000` 告诉对方。
+2. 双方客户端在「设置」里填服务器 IP/端口（可点「测试连接」验证），保存。
+3. 主菜单 → 多人游戏 → 注册/登录（用户名、密码、头像保存在服务器上）。
+4. 大厅里一方「建立房间」，另一方「加入」，房主点击「开始游戏」。
+5. 服务器管理面板实时显示在线客户端和房间状态。
+
+## 皮肤系统
+
+所有图片资源通过 key 引用，定义在 `packages/client/public/assets/skins/default/manifest.json`。
+把同名图片文件放进该目录即可替换（如 `menu_bg.png`、`avatars/avatar_1.png`、`cards/sniper.png`），
+图片缺失时自动显示占位样式，无需改代码。
+
+## 测试与检查
+
+```bash
+npm run test         # 引擎单元测试（16 个）+ 服务器端到端测试（双客户端全流程）
+npm run typecheck    # 三个包的 TypeScript 严格检查
+npm run build        # 客户端生产构建
+```
+
+## 环境变量
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `PORT` | 服务器监听端口 | 9000 |
+| `NO_OPEN` | 设为 `1` 时服务器启动不自动打开管理面板 | 自动打开 |
+
+## 当前版本说明（v0.1）
+
+- 规则引擎 v0：前后排战场、近战/远程/护卫/渗透/速攻、法术（伤害/抽牌/侦测）、疲劳机制。
+- 双方使用相同预组卡组（22 张）；构筑、陷阱盖放、牌库污染为后续版本（见 DESIGN.md 路线图）。
+- 服务器为权威结算，对手手牌/牌库内容不下发客户端（信息隐藏）。
