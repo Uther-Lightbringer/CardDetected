@@ -73,8 +73,14 @@ function cellText(u: GameState['players'][0]['board']['front'][number]): string 
   return `${u.name}(${u.atk}/${u.hp}${kws ? ',' + kws : ''}${status})`;
 }
 
+/** AI 通过侦测获得的情报（对手手牌快照） */
+export interface AiIntel {
+  turn: number;
+  hand: string[];
+}
+
 /** 把当前局面 + 合法目标提示 + 最近战况渲染成给模型的文本 */
-export function buildPrompt(state: GameState, side: PlayerIndex, recentLog: string[]): string {
+export function buildPrompt(state: GameState, side: PlayerIndex, recentLog: string[], intel?: AiIntel | null): string {
   const me = state.players[side];
   const foe = state.players[side === 0 ? 1 : 0];
   const lines: string[] = [];
@@ -129,6 +135,12 @@ export function buildPrompt(state: GameState, side: PlayerIndex, recentLog: stri
   if (recentLog.length > 0) {
     lines.push('最近战况:');
     for (const l of recentLog.slice(-10)) lines.push(`  ${l}`);
+  }
+
+  // 侦测情报
+  if (intel && intel.hand.length > 0) {
+    const names = intel.hand.map((id) => CARDS[id]?.name ?? id).join('、');
+    lines.push(`【情报】你在第 ${intel.turn} 回合侦测到对手的手牌: ${names}（此后对手可能已打出或抽到新的牌）`);
   }
 
   lines.push('请输出你的回合动作 JSON。');
@@ -215,9 +227,10 @@ export async function requestDeepseekTurn(
   side: PlayerIndex,
   recentLog: string[],
   onDebug?: (record: LlmDebugRecord) => void,
+  intel?: AiIntel | null,
   timeoutMs = 20000,
 ): Promise<AiTurn> {
-  const prompt = buildPrompt(state, side, recentLog);
+  const prompt = buildPrompt(state, side, recentLog, intel);
   const startedAt = Date.now();
   const at = new Date().toLocaleTimeString('zh-CN', { hour12: false });
   let recorded = false;

@@ -208,7 +208,7 @@ function playCard(
     p.hand.splice(action.handIndex, 1);
     target.hp -= eff.amount;
     events.push({ type: 'play_card', player: side, card: cardId, target: t });
-    events.push({ type: 'damage', target: t, amount: eff.amount, source: cardId });
+    events.push({ type: 'damage', player: side, target: t, amount: eff.amount, source: cardId });
     removeDead(state, events);
   } else if (eff.kind === 'draw') {
     p.mana -= def.cost;
@@ -246,13 +246,14 @@ function attack(
   const foe = other(side);
   if (action.target === 'player') {
     state.players[foe].hp -= attacker.atk;
-    events.push({ type: 'attack', attacker: action.attacker, target: 'player', damage: attacker.atk });
+    events.push({ type: 'attack', player: side, attacker: action.attacker, target: 'player', damage: attacker.atk });
   } else {
     const defender = unitAt(state, foe, action.target)!;
     defender.hp -= attacker.atk;
     attacker.hp -= defender.atk;
     events.push({
       type: 'attack',
+      player: side,
       attacker: action.attacker,
       target: action.target,
       damage: attacker.atk,

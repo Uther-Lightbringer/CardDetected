@@ -143,4 +143,14 @@ test('prompt：近战被前排挡住时不提供打脸选项；含最近战况',
   assert.ok(p.includes('对手打出「狙击手」'));
 });
 
+test('prompt：侦测情报注入（AI 看过底牌后应知道内容）', () => {
+  const s = makeState();
+  const p = buildPrompt(s, 1, [], { turn: 3, hand: ['sniper', 'swat_captain'] });
+  assert.ok(p.includes('【情报】'));
+  assert.ok(p.includes('狙击手') && p.includes('重案组长'));
+  assert.ok(p.includes('第 3 回合'));
+  // 无情报时不出现情报区块
+  assert.ok(!buildPrompt(s, 1, []).includes('【情报】'));
+});
+
 console.log(`\n全部 ${passed} 个测试通过 ✅`);

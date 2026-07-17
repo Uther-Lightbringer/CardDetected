@@ -44,7 +44,9 @@ export default function Battle({
 }): JSX.Element {
   const { adapter } = session;
   const [view, setView] = useState<GameView | null>(null);
-  const [log, setLog] = useState<string[]>([]);
+  /** 日志条目：side 决定颜色（me=我方绿 / opp=敌方红 / sys=系统灰） */
+  interface LogLine { text: string; side: 'me' | 'opp' | 'sys' }
+  const [log, setLog] = useState<LogLine[]>([]);
   const [result, setResult] = useState<{ winner: PlayerIndex; reason: string } | null>(null);
   const [revealHand, setRevealHand] = useState<string[] | null>(null);
   const [selectedHand, setSelectedHand] = useState<number | null>(null); // 单位牌选位
@@ -53,6 +55,36 @@ export default function Battle({
   const [showDebug, setShowDebug] = useState(false);
   const [debugRecords, setDebugRecords] = useState<LlmDebugRecord[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
+
+  // ---------- 动效状态 ----------
+  interface Floater { id: number; side: 'me' | 'opp'; slot: string; text: string }
+  interface DyingUnit { id: number; side: 'me' | 'opp'; row: Row; slot: number; unit: UnitState }
+  const [floaters, setFloaters] = useState<Floater[]>([]);
+  const [dying, setDying] = useState<DyingUnit[]>([]);
+  const [combatFx, setCombatFx] = useState<{ key: number; attacker: UnitRef; attackerEnemy: boolean; target: TargetRef } | null>(null);
+  const [turnBanner, setTurnBanner] = useState(0);
+  const [hpPulse, setHpPulse] = useState({ me: 0, opp: 0 });
+  /** AI 台词气泡（显示在对手头像旁，几秒后自动消失） */
+  const [aiBubble, setAiBubble] = useState<{ id: number; text: string } | null>(null);
+  const viewRef = useRef<GameView | null>(null);
+  const fxIdRef = useRef(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const later = (ms: number, fn: () => void): void => {
+    timersRef.current.push(setTimeout(fn, ms));
+  };
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
+
+  const addFloater = (side: 'me' | 'opp', slot: string, text: string): void => {
+    const id = ++fxIdRef.current;
+    setFloaters((old) => [...old, { id, side, slot, text }]);
+    later(950, () => setFloaters((old) => old.filter((f) => f.id !== id)));
+  };
+  const addDying = (side: 'me' | 'opp', row: Row, slot: number, unit: UnitState): void => {
+    const id = ++fxIdRef.current;
+    setDying((old) => [...old, { id, side, row, slot, unit }]);
+    later(680, () => setDying((old) => old.filter((d) => d.id !== id)));
+  };
 
   // 调试面板打开时每秒刷新一次记录（AI 可能正在思考）
   useEffect(() => {
@@ -70,8 +102,14 @@ export default function Battle({
   useEffect(() => {
     adapter.hooks = {
       onUpdate: (v, events) => {
+        const prev = viewRef.current;
+        viewRef.current = v;
         setView(v);
-        handleEvents(events, v);
+        if (prev) {
+          if (v.me.hp !== prev.me.hp) setHpPulse((p) => ({ ...p, me: p.me + 1 }));
+          if (v.opp.hp !== prev.opp.hp) setHpPulse((p) => ({ ...p, opp: p.opp + 1 }));
+        }
+        handleEvents(events, v, prev);
       },
       onGameOver: (winner, reason) => setResult({ winner, reason }),
       onError: (msg) => toast(msg),
@@ -80,43 +118,78 @@ export default function Battle({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adapter]);
 
-  const handleEvents = (events: GameEvent[], v: GameView): void => {
-    const lines: string[] = [];
+  const handleEvents = (events: GameEvent[], v: GameView, prev: GameView | null): void => {
+    const lines: LogLine[] = [];
     for (const e of events) {
       const who = e.player === v.mySide ? '你' : '对手';
+      const side: LogLine['side'] = e.player === v.mySide ? 'me' : 'opp';
       switch (e.type) {
         case 'turn_start':
-          lines.push(`—— 第 ${e.turn} 回合 · ${who}行动 ——`);
+          lines.push({ text: `—— 第 ${e.turn} 回合 · ${who}行动 ——`, side: 'sys' });
+          setTurnBanner(++fxIdRef.current);
+          later(1300, () => setTurnBanner(0));
           break;
         case 'play_card':
-          lines.push(`${who}打出「${CARDS[e.card as string]?.name ?? e.card}」`);
+          lines.push({ text: `${who}打出「${CARDS[e.card as string]?.name ?? e.card}」`, side });
           break;
-        case 'attack':
-          if (e.target === 'player') lines.push(`${who}的单位直击对方侦探，造成 ${e.damage} 点伤害！`);
-          else lines.push(`${who}的单位发起攻击（${e.damage} 伤害${e.counter ? `，被反击 ${e.counter}` : ''}）`);
+        case 'attack': {
+          lines.push({
+            text:
+              e.target === 'player'
+                ? `${who}的单位直击对方侦探，造成 ${e.damage} 点伤害！`
+                : `${who}的单位发起攻击（${e.damage} 伤害${e.counter ? `，被反击 ${e.counter}` : ''}）`,
+            side,
+          });
+          // 动效：攻击者冲刺 + 目标抖动 + 伤害飘字
+          const enemy = e.player !== v.mySide;
+          const atkRef = e.attacker as UnitRef;
+          setCombatFx({ key: ++fxIdRef.current, attacker: atkRef, attackerEnemy: enemy, target: e.target as TargetRef });
+          later(470, () => setCombatFx(null));
+          if (e.target === 'player') addFloater(enemy ? 'me' : 'opp', 'hero', `-${e.damage}`);
+          else {
+            const t = e.target as UnitRef;
+            addFloater(enemy ? 'me' : 'opp', `${t.row}${t.slot}`, `-${e.damage}`);
+          }
+          if (e.counter) addFloater(enemy ? 'opp' : 'me', `${atkRef.row}${atkRef.slot}`, `-${e.counter}`);
           break;
-        case 'damage':
-          lines.push(`「${CARDS[e.source as string]?.name ?? '法术'}」造成 ${e.amount} 点伤害`);
+        }
+        case 'damage': {
+          lines.push({ text: `「${CARDS[e.source as string]?.name ?? '法术'}」造成 ${e.amount} 点伤害`, side });
+          const t = e.target as UnitRef;
+          addFloater(e.player === v.mySide ? 'opp' : 'me', `${t.row}${t.slot}`, `-${e.amount}`);
           break;
-        case 'death':
-          lines.push(`${who}的「${CARDS[e.card as string]?.name ?? e.card}」被消灭`);
+        }
+        case 'death': {
+          lines.push({ text: `${who}的「${CARDS[e.card as string]?.name ?? e.card}」被消灭`, side });
+          // 动效：从上一帧取出单位做消散动画
+          const row = e.row as Row;
+          const slot = e.slot as number;
+          const board = e.player === v.mySide ? prev?.me.board : prev?.opp.board;
+          const unit = board?.[row][slot];
+          if (unit) addDying(e.player === v.mySide ? 'me' : 'opp', row, slot, unit);
           break;
+        }
         case 'draw':
-          lines.push(e.player === v.mySide ? `你抽了 ${(e.cards as string[]).length} 张牌` : '对手抽了 1 张牌');
+          lines.push({ text: e.player === v.mySide ? `你抽了 ${(e.cards as string[]).length} 张牌` : '对手抽了 1 张牌', side });
           break;
         case 'fatigue':
-          lines.push(`${who}牌库已空，疲劳受到 ${e.damage} 点伤害`);
+          lines.push({ text: `${who}牌库已空，疲劳受到 ${e.damage} 点伤害`, side });
+          addFloater(e.player === v.mySide ? 'me' : 'opp', 'hero', `-${e.damage}`);
           break;
         case 'burn':
-          if (e.player === v.mySide) lines.push(`手牌已满，「${CARDS[e.card as string]?.name ?? e.card}」被烧毁`);
+          if (e.player === v.mySide) lines.push({ text: `手牌已满，「${CARDS[e.card as string]?.name ?? e.card}」被烧毁`, side: 'me' });
           break;
         case 'reveal':
           setRevealHand(e.hand as string[]);
-          lines.push('🔍 你侦测了对手的手牌！');
+          lines.push({ text: '🔍 你侦测了对手的手牌！', side: 'me' });
           break;
-        case 'ai_comment':
-          lines.push(`🗨 对手：「${e.text}」`);
+        case 'ai_comment': {
+          lines.push({ text: `🗨 对手：「${e.text}」`, side: 'opp' });
+          const id = ++fxIdRef.current;
+          setAiBubble({ id, text: String(e.text) });
+          later(4100, () => setAiBubble((b) => (b?.id === id ? null : b)));
           break;
+        }
       }
     }
     if (lines.length > 0) setLog((old) => [...old, ...lines].slice(-200));
@@ -222,11 +295,14 @@ export default function Battle({
     highlight?: boolean;
     selected?: boolean;
     mine?: boolean;
+    extraClass?: string;
+    floaters?: Floater[];
   }) => {
     if (!unit) {
       return (
         <div className={`slot empty ${opts.highlight ? 'droppable' : ''}`} onClick={opts.onClick}>
           {opts.highlight && <span className="slot-hint">部署</span>}
+          {opts.floaters?.map((f) => <span key={f.id} className="floater">{f.text}</span>)}
         </div>
       );
     }
@@ -234,7 +310,7 @@ export default function Battle({
     const idle = opts.mine && (unit.sick || unit.attacked);
     return (
       <div
-        className={`slot unit ${opts.highlight ? 'targetable' : ''} ${opts.selected ? 'selected' : ''} ${idle ? 'idle' : ''} ${opts.mine && myTurn && !idle ? 'ready' : ''}`}
+        className={`slot unit ${opts.highlight ? 'targetable' : ''} ${opts.selected ? 'selected' : ''} ${idle ? 'idle' : ''} ${opts.mine && myTurn && !idle ? 'ready' : ''} ${opts.extraClass ?? ''}`}
         onClick={opts.onClick}
         title={def?.desc}
       >
@@ -248,6 +324,44 @@ export default function Battle({
           <span className={unit.hp < unit.maxHp ? 'stat-hp hurt' : 'stat-hp'}>{unit.hp}</span>
         </div>
         {unit.sick && opts.mine && <div className="unit-sick">休整中</div>}
+        {opts.floaters?.map((f) => <span key={f.id} className="floater">{f.text}</span>)}
+      </div>
+    );
+  };
+
+  /** 渲染一个棋盘格：活单位 / 死亡幽灵 / 空位，并叠加战斗特效与飘字 */
+  const renderBoardSlot = (
+    u: UnitState | null,
+    side: 'me' | 'opp',
+    row: Row,
+    slot: number,
+    opts: { onClick?: () => void; highlight?: boolean; selected?: boolean },
+  ): JSX.Element => {
+    const sk = `${row}${slot}`;
+    const slotFloaters = floaters.filter((f) => f.side === side && f.slot === sk);
+    const isAttackerFx =
+      !!combatFx && combatFx.attacker.row === row && combatFx.attacker.slot === slot &&
+      (combatFx.attackerEnemy ? side === 'opp' : side === 'me');
+    const isTargetFx =
+      !!combatFx && combatFx.target !== 'player' && combatFx.target.row === row && combatFx.target.slot === slot &&
+      (combatFx.attackerEnemy ? side === 'me' : side === 'opp');
+    const fxClass = `${isAttackerFx ? (side === 'me' ? 'fx-lunge-up' : 'fx-lunge-down') : ''} ${isTargetFx ? 'fx-shake' : ''}`;
+
+    if (!u) {
+      const ghost = dying.find((d) => d.side === side && d.row === row && d.slot === slot);
+      if (ghost) {
+        return <div key={`ghost-${ghost.id}`}>{renderUnit(ghost.unit, { extraClass: 'fx-dying', floaters: slotFloaters })}</div>;
+      }
+      return (
+        <div key={`e-${side}-${row}-${slot}`}>
+          {renderUnit(null, { onClick: opts.onClick, highlight: opts.highlight, floaters: slotFloaters })}
+        </div>
+      );
+    }
+    // key 绑定 uid：新单位重新挂载 → 自动播放入场动画
+    return (
+      <div key={`u${u.uid}`}>
+        {renderUnit(u, { mine: side === 'me', onClick: opts.onClick, highlight: opts.highlight, selected: opts.selected, extraClass: fxClass, floaters: slotFloaters })}
       </div>
     );
   };
@@ -284,7 +398,7 @@ export default function Battle({
       <div className="battle-main">
         {/* 对手信息 */}
         <div
-          className={`hero-bar opp ${attacker && legal.includes('player') ? 'targetable' : ''}`}
+          className={`hero-bar opp ${attacker && legal.includes('player') ? 'targetable' : ''} ${combatFx && combatFx.target === 'player' && !combatFx.attackerEnemy ? 'fx-shake' : ''}`}
           onClick={clickOppHero}
         >
           <SkinImage skinKey={session.oppAvatar} alt={session.oppName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.oppAvatar] ?? '👤'}</span>} />
@@ -293,49 +407,66 @@ export default function Battle({
             <div className="hero-sub">🃏 {view.opp.handCount} 手牌 · 📚 {view.opp.deckCount} 牌库</div>
           </div>
           <div className="hero-numbers">
-            <span className="hp">❤ {view.opp.hp}</span>
+            <span key={hpPulse.opp} className={hpPulse.opp > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.opp.hp}</span>
             <span className="mana">◆ {view.opp.mana}/{view.opp.maxMana}</span>
           </div>
           {attacker && legal.includes('player') && <span className="attack-hint">可攻击</span>}
+          {floaters.filter((f) => f.side === 'opp' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
+          {aiBubble && <div key={aiBubble.id} className="speech-bubble">{aiBubble.text}</div>}
         </div>
 
         {/* 对手棋盘：后排在上 */}
         <div className="board-row opp-row">
-          {view.opp.board.back.map((u, i) => (
-            <div key={`ob${i}`}>{renderUnit(u, { onClick: () => clickEnemyUnit('back', i), highlight: (spellSource !== null || attacker !== null) && (spellSource !== null || isLegalTarget('back', i)) && !!u })}</div>
-          ))}
+          {view.opp.board.back.map((u, i) =>
+            renderBoardSlot(u, 'opp', 'back', i, {
+              onClick: () => clickEnemyUnit('back', i),
+              highlight: (spellSource !== null || attacker !== null) && (spellSource !== null || isLegalTarget('back', i)) && !!u,
+            }),
+          )}
         </div>
         <div className="board-row opp-row">
-          {view.opp.board.front.map((u, i) => (
-            <div key={`of${i}`}>{renderUnit(u, { onClick: () => clickEnemyUnit('front', i), highlight: (spellSource !== null || attacker !== null) && (spellSource !== null || isLegalTarget('front', i)) && !!u })}</div>
-          ))}
+          {view.opp.board.front.map((u, i) =>
+            renderBoardSlot(u, 'opp', 'front', i, {
+              onClick: () => clickEnemyUnit('front', i),
+              highlight: (spellSource !== null || attacker !== null) && (spellSource !== null || isLegalTarget('front', i)) && !!u,
+            }),
+          )}
         </div>
 
-        <div className="mid-banner">{myTurn ? '⚡ 你的回合' : '⏳ 对手行动中…'}</div>
+        <div key={`${view.turn}-${view.current}`} className="mid-banner mid-pulse">{myTurn ? '⚡ 你的回合' : '⏳ 对手行动中…'}</div>
 
         {/* 我的棋盘：前排在上 */}
         <div className="board-row my-row">
-          {view.me.board.front.map((u, i) => (
-            <div key={`mf${i}`}>{renderUnit(u, { mine: true, onClick: () => clickMySlot('front', i), highlight: selectedHand !== null && !u, selected: !!attacker && attacker.row === 'front' && attacker.slot === i })}</div>
-          ))}
+          {view.me.board.front.map((u, i) =>
+            renderBoardSlot(u, 'me', 'front', i, {
+              onClick: () => clickMySlot('front', i),
+              highlight: selectedHand !== null && !u,
+              selected: !!attacker && attacker.row === 'front' && attacker.slot === i,
+            }),
+          )}
         </div>
         <div className="board-row my-row">
-          {view.me.board.back.map((u, i) => (
-            <div key={`mb${i}`}>{renderUnit(u, { mine: true, onClick: () => clickMySlot('back', i), highlight: selectedHand !== null && !u, selected: !!attacker && attacker.row === 'back' && attacker.slot === i })}</div>
-          ))}
+          {view.me.board.back.map((u, i) =>
+            renderBoardSlot(u, 'me', 'back', i, {
+              onClick: () => clickMySlot('back', i),
+              highlight: selectedHand !== null && !u,
+              selected: !!attacker && attacker.row === 'back' && attacker.slot === i,
+            }),
+          )}
         </div>
 
         {/* 我的信息 */}
-        <div className="hero-bar">
+        <div className={`hero-bar ${combatFx && combatFx.target === 'player' && combatFx.attackerEnemy ? 'fx-shake' : ''}`}>
           <SkinImage skinKey={session.myAvatar} alt={session.myName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.myAvatar] ?? '👤'}</span>} />
           <div className="hero-info">
             <div className="hero-name">{session.myName}</div>
             <div className="hero-sub">📚 {view.me.deckCount} 牌库</div>
           </div>
           <div className="hero-numbers">
-            <span className="hp">❤ {view.me.hp}</span>
+            <span key={hpPulse.me} className={hpPulse.me > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.me.hp}</span>
             <span className="mana">◆ {view.me.mana}/{view.me.maxMana}</span>
           </div>
+          {floaters.filter((f) => f.side === 'me' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
         </div>
 
         {/* 手牌 */}
@@ -357,9 +488,16 @@ export default function Battle({
           </button>
         )}
         <div className="battle-log" ref={logRef}>
-          {log.map((l, i) => <div key={i} className="log-line">{l}</div>)}
+          {log.map((l, i) => <div key={i} className={`log-line log-${l.side}`}>{l.text}</div>)}
         </div>
       </div>
+
+      {/* 回合横幅 */}
+      {turnBanner > 0 && (
+        <div key={turnBanner} className="turn-banner">
+          {view.current === mySide ? '⚡ 你的回合' : '⏳ 对手回合'}
+        </div>
+      )}
 
       {/* 侦测结果 */}
       {revealHand && (

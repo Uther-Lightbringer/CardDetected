@@ -14,7 +14,7 @@ import {
 } from '@cardetect/shared';
 import type { WsClient } from '../net';
 import type { Settings } from '../settings';
-import { requestDeepseekTurn, resolveAiAction, type LlmDebugRecord } from '../ai/deepseek';
+import { requestDeepseekTurn, resolveAiAction, type AiIntel, type LlmDebugRecord } from '../ai/deepseek';
 
 /** 对战 UI 与数据源之间的桥：单人（本地引擎+AI）与多人（服务器）共用 */
 export interface BattleCallbacks {
@@ -52,6 +52,8 @@ export class LocalAdapter implements BattleAdapter {
   private recentLog: string[] = [];
   /** 大模型调用调试记录 */
   private debugLog: LlmDebugRecord[] = [];
+  /** AI 通过「现场勘查」侦测到的玩家手牌（情报记忆） */
+  private aiIntel: AiIntel | null = null;
 
   getLlmDebugLog(): LlmDebugRecord[] {
     return this.debugLog;
@@ -71,6 +73,11 @@ export class LocalAdapter implements BattleAdapter {
         this.recentLog.push(`${who}的单位攻击${e.target === 'player' ? '对方玩家' : '单位'}(${e.damage}伤害)`);
       } else if (e.type === 'death') this.recentLog.push(`「${CARDS[e.card as string]?.name ?? e.card}」阵亡`);
       else if (e.type === 'fatigue') this.recentLog.push(`${who}疲劳受伤(${e.damage})`);
+      else if (e.type === 'reveal') {
+        // AI 侦测成功：把看到的手牌记入情报，下一回合喂给模型
+        if (e.player === this.aiSide) this.aiIntel = { turn: this.state.turn, hand: e.hand as string[] };
+        this.recentLog.push(`${who}侦测了对手的手牌`);
+      }
     }
     this.recentLog = this.recentLog.slice(-12);
   }
@@ -124,6 +131,7 @@ export class LocalAdapter implements BattleAdapter {
             this.debugLog.push(record);
             if (this.debugLog.length > 30) this.debugLog.shift();
           },
+          this.aiIntel,
         );
         // 台词先上，再逐步执行动作
         if (turn.comment) this.push([{ type: 'ai_comment', text: turn.comment }]);
