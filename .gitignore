@@ -2,7 +2,6 @@ node_modules/
 dist/
 build/
 release/
-data/
 packages/server/data/
 *.log
 .DS_Store

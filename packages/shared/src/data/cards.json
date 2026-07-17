@@ -1,0 +1,218 @@
+[
+  {
+    "id": "rookie_detective",
+    "name": "青衫少年",
+    "cost": 1,
+    "kind": "unit",
+    "atk": 2,
+    "hp": 1,
+    "keywords": ["melee"],
+    "art": "card_rookie_detective",
+    "desc": "初入江湖，干劲十足。"
+  },
+  {
+    "id": "street_informer",
+    "name": "茶馆包打听",
+    "cost": 2,
+    "kind": "unit",
+    "atk": 3,
+    "hp": 2,
+    "keywords": ["melee"],
+    "art": "card_street_informer",
+    "desc": "三教九流的消息，没有他打听不到的。"
+  },
+  {
+    "id": "veteran_cop",
+    "name": "老镖头",
+    "cost": 3,
+    "kind": "unit",
+    "atk": 4,
+    "hp": 3,
+    "keywords": ["melee"],
+    "art": "card_veteran_cop",
+    "desc": "走镖三十年，见惯了大风大浪。"
+  },
+  {
+    "id": "undercover_agent",
+    "name": "无影楼·潜行者",
+    "cost": 4,
+    "kind": "unit",
+    "faction": "wuying",
+    "atk": 4,
+    "hp": 4,
+    "keywords": ["melee", "infiltrate"],
+    "art": "card_undercover_agent",
+    "desc": "来无影，去无踪。"
+  },
+  {
+    "id": "swat_captain",
+    "name": "铁脊山庄·铁掌护法",
+    "cost": 5,
+    "kind": "unit",
+    "faction": "tieji",
+    "atk": 5,
+    "hp": 6,
+    "keywords": ["melee", "guard"],
+    "art": "card_swat_captain",
+    "desc": "有我在，谁也别想过去。"
+  },
+  {
+    "id": "sniper",
+    "name": "神弩手",
+    "cost": 2,
+    "kind": "unit",
+    "atk": 2,
+    "hp": 2,
+    "keywords": ["ranged"],
+    "art": "card_sniper",
+    "desc": "百步之外，取人首级。"
+  },
+  {
+    "id": "forensics_expert",
+    "name": "唐门弩机师",
+    "cost": 3,
+    "kind": "unit",
+    "atk": 3,
+    "hp": 2,
+    "keywords": ["ranged"],
+    "art": "card_forensics_expert",
+    "desc": "弩机一响，例无虚发。"
+  },
+  {
+    "id": "assault_team",
+    "name": "快刀客",
+    "cost": 3,
+    "kind": "unit",
+    "atk": 3,
+    "hp": 2,
+    "keywords": ["melee", "charge"],
+    "art": "card_assault_team",
+    "desc": "天下武功，唯快不破。"
+  },
+  {
+    "id": "interrogation",
+    "name": "袖里剑",
+    "cost": 2,
+    "kind": "spell",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "damage", "amount": 3 }] }],
+    "art": "card_interrogation",
+    "desc": "对一个敌方单位造成 3 点伤害。"
+  },
+  {
+    "id": "gather_clues",
+    "name": "博览群书",
+    "cost": 3,
+    "kind": "spell",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "draw", "amount": 2 }] }],
+    "art": "card_gather_clues",
+    "desc": "抽 2 张牌。"
+  },
+  {
+    "id": "crime_scene_scan",
+    "name": "天机阁·眼线密报",
+    "cost": 1,
+    "kind": "spell",
+    "faction": "tianji",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "reveal_hand" }] }],
+    "art": "card_crime_scene_scan",
+    "desc": "识破：查看对手的全部手牌。"
+  },
+  {
+    "id": "qudu_blade",
+    "name": "无影楼·淬毒短刃",
+    "cost": 2,
+    "kind": "buff",
+    "faction": "wuying",
+    "buff": { "atk": 2, "destroyAfterAttack": true },
+    "art": "card_qudu_blade",
+    "desc": "淬毒：使一个友方单位 +2 攻，其攻击后此毒刃销毁。"
+  },
+  {
+    "id": "hufa_chuangong",
+    "name": "铁脊山庄·护法传功",
+    "cost": 2,
+    "kind": "buff",
+    "faction": "tieji",
+    "buff": { "atk": 1, "hp": 2 },
+    "art": "card_hufa_chuangong",
+    "desc": "传功：使一个友方单位 +1/+2。"
+  },
+  {
+    "id": "gu_powder",
+    "name": "五毒教·蛊毒散",
+    "cost": 2,
+    "kind": "spell",
+    "faction": "wudu",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "pollute", "amount": 2 }] }],
+    "art": "card_gu_powder",
+    "desc": "下毒：洗 2 张「蛊奴」进对手牌库。"
+  },
+  {
+    "id": "wan_gu_devour",
+    "name": "五毒教·万蛊噬心",
+    "cost": 5,
+    "kind": "spell",
+    "faction": "wudu",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "damage_per_noise", "amount": 1 }] }],
+    "art": "card_wan_gu_devour",
+    "desc": "对手牌库中每有一张「蛊奴」，便对其造成 1 点伤害。"
+  },
+  {
+    "id": "qingxin_jue",
+    "name": "天机阁·清心诀",
+    "cost": 1,
+    "kind": "spell",
+    "faction": "tianji",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "purify" }] }],
+    "art": "card_qingxin_jue",
+    "desc": "驱毒：移除自己牌库中所有「蛊奴」。"
+  },
+  {
+    "id": "shadow_assassin",
+    "name": "无影楼·影子刺客",
+    "cost": 3,
+    "kind": "unit",
+    "faction": "wuying",
+    "atk": 4,
+    "hp": 3,
+    "keywords": ["melee", "stealth"],
+    "effects": [{ "trigger": "on_reveal", "actions": [{ "kind": "self_ready" }] }],
+    "art": "card_shadow_assassin",
+    "desc": "易容。翻开时：本回合即可攻击。"
+  },
+  {
+    "id": "zhaoyaojing",
+    "name": "天机阁·照妖镜",
+    "cost": 2,
+    "kind": "spell",
+    "faction": "tianji",
+    "effects": [{ "trigger": "on_play", "actions": [{ "kind": "reveal_unit" }] }],
+    "art": "card_zhaoyaojing",
+    "desc": "识破：强制翻开一个易容单位，其不触发「翻开时」效果且当回合休整。"
+  },
+  {
+    "id": "fudao_trap",
+    "name": "无影楼·伏刀阵",
+    "cost": 2,
+    "kind": "trap",
+    "faction": "wuying",
+    "trap": {
+      "trigger": "on_opp_attack",
+      "effects": [{ "trigger": "on_play", "actions": [{ "kind": "damage_trigger", "amount": 3 }] }]
+    },
+    "art": "card_fudao_trap",
+    "desc": "埋伏：敌方单位攻击时触发，对其造成 3 点伤害。"
+  },
+  {
+    "id": "gu_slave",
+    "name": "蛊奴",
+    "cost": 1,
+    "kind": "unit",
+    "token": true,
+    "atk": 1,
+    "hp": 1,
+    "keywords": ["melee"],
+    "art": "card_gu_slave",
+    "desc": "被蛊虫操控的傀儡，只会白白占用抽牌的位置。"
+  }
+]
