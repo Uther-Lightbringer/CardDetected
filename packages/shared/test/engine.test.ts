@@ -53,12 +53,16 @@ function makeUnit(cardId: string, atk: number, hp: number, keywords: UnitState['
 // ---------- 测试 ----------
 console.log('规则引擎单元测试');
 
-test('开局：先手 3 张、后手 4 张，先手行动', () => {
+test('开局：先手 3 张、后手 4 张，先手行动；首回合计为第 1 回合且先手 1 点内力', () => {
   const s = createGame(buildStarterDeck(), buildStarterDeck(), 42);
   assert.equal(s.players[0].hand.length, 3);
   assert.equal(s.players[1].hand.length, 4);
   assert.equal(s.current, 0);
   assert.equal(s.winner, null);
+  assert.equal(s.turn, 1, '首回合应计为第 1 回合');
+  assert.equal(s.players[0].mana, 1, '先手首回合应有 1 点内力');
+  assert.equal(s.players[0].maxMana, 1);
+  assert.equal(s.players[1].mana, 0, '后手未行动前无内力');
 });
 
 test('结束回合：切换到对手，法力+1 并抽牌', () => {

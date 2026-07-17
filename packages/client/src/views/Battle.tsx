@@ -115,6 +115,10 @@ export default function Battle({
         const prev = viewRef.current;
         viewRef.current = v;
         setView(v);
+        if (!prev && v.winner === null) {
+          // 首回合没有 turn_start 事件，日志手动补上起始行
+          setLog([{ text: `—— 第 ${v.turn} 回合 · ${v.current === v.mySide ? '你' : '对手'}行动 ——`, side: 'sys' }]);
+        }
         if (prev) {
           if (v.me.hp !== prev.me.hp) setHpPulse((p) => ({ ...p, me: p.me + 1 }));
           if (v.opp.hp !== prev.opp.hp) setHpPulse((p) => ({ ...p, opp: p.opp + 1 }));

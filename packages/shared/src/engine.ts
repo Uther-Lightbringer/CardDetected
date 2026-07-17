@@ -55,7 +55,7 @@ export function createGame(deckA: string[], deckB: string[], seed: number): Game
   const rng = createRng(seed);
   const state: GameState = {
     players: [createPlayer(shuffle([...deckA], rng)), createPlayer(shuffle([...deckB], rng))],
-    turn: 0,
+    turn: 1, // 开局即先手的第 1 回合（原实现 turn=0，首回合不计数且先手 0 内力只能空过）
     current: 0,
     uidCounter: 1,
     winner: null,
@@ -63,6 +63,9 @@ export function createGame(deckA: string[], deckB: string[], seed: number): Game
   // 起始手牌：先手 3 张，后手 4 张
   drawCards(state, 0, 3, []);
   drawCards(state, 1, 4, []);
+  // 先手首回合内力 1 点（后手结束回合时由 startTurn 正常 +1）
+  state.players[0].maxMana = 1;
+  state.players[0].mana = 1;
   return state;
 }
 
