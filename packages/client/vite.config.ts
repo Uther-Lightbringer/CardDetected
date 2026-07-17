@@ -5,5 +5,13 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   // 打包后用 file:// 加载（Electron），资源路径必须是相对路径；dev 阶段保持绝对路径
   base: command === 'build' ? './' : '/',
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    watch: {
+      // Windows 下原生 watcher 会在文件写入中途触发转换，
+      // 把空/截断的 styles.css 缓存进模块图（页面样式全丢）；轮询可避免该竞态
+      usePolling: true,
+      interval: 300,
+    },
+  },
 }));
