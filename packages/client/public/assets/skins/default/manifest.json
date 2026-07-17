@@ -23,6 +23,15 @@
     "card_assault_team": "cards/assault_team.png",
     "card_interrogation": "cards/interrogation.png",
     "card_gather_clues": "cards/gather_clues.png",
-    "card_crime_scene_scan": "cards/crime_scene_scan.png"
+    "card_crime_scene_scan": "cards/crime_scene_scan.png",
+    "card_qudu_blade": "cards/qudu_blade.png",
+    "card_hufa_chuangong": "cards/hufa_chuangong.png",
+    "card_gu_powder": "cards/gu_powder.png",
+    "card_wan_gu_devour": "cards/wan_gu_devour.png",
+    "card_qingxin_jue": "cards/qingxin_jue.png",
+    "card_gu_slave": "cards/gu_slave.png",
+    "card_shadow_assassin": "cards/shadow_assassin.png",
+    "card_zhaoyaojing": "cards/zhaoyaojing.png",
+    "card_fudao_trap": "cards/fudao_trap.png"
   }
 }

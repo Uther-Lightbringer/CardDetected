@@ -201,6 +201,31 @@ input:focus, select:focus { border-color: var(--amber); }
 }
 .trap-slot.filled { border-style: solid; border-color: var(--amber); color: var(--amber); }
 
+/* 底部：头像(左) | 手牌(中) | 气血/内力/埋伏(右) */
+.hand-zone { display: flex; align-items: center; gap: 10px; }
+.hand-zone .hand { flex: 1; min-width: 0; }
+.hero-side {
+  display: flex; align-items: center; gap: 10px; background: rgba(28,32,41,.92);
+  border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; position: relative;
+  flex-shrink: 0;
+}
+.hero-side.right { flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; }
+.hero-side.right .trap-row { margin-left: 0; }
+
+/* 对手三段式：可被攻击时两侧面板高亮 */
+.opp-zone.targetable .hero-side { border-color: var(--red); box-shadow: 0 0 12px rgba(224,92,92,.4); cursor: crosshair; }
+.opp-hand { align-items: center; }
+.card-back {
+  width: 34px; height: 46px; border-radius: 5px; object-fit: cover;
+  border: 1px solid var(--border); margin-right: -16px; box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+}
+.card-back:last-child { margin-right: 0; }
+.card-back-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #2a3040, #1c2029);
+}
+.card-back-fallback::after { content: '◆'; color: var(--dim); font-size: 12px; }
+
 /* 手牌 */
 .hand { display: flex; gap: 8px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }
 .hand-card {

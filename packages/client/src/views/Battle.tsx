@@ -494,24 +494,33 @@ export default function Battle({
     <div className="battle">
       <SkinImage skinKey="battle_bg" alt="" className="battle-bg" fallback={<div className="battle-bg menu-bg-fallback" />} />
       <div className="battle-main">
-        {/* 对手信息 */}
+        {/* 对手：头像(左) | 手牌背(中) | 气血/内力/埋伏(右) */}
         <div
-          className={`hero-bar opp ${attacker && legal.includes('player') ? 'targetable' : ''} ${combatFx && combatFx.target === 'player' && !combatFx.attackerEnemy ? 'fx-shake' : ''}`}
+          className={`hand-zone opp-zone ${attacker && legal.includes('player') ? 'targetable' : ''}`}
           onClick={clickOppHero}
         >
-          <SkinImage skinKey={session.oppAvatar} alt={session.oppName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.oppAvatar] ?? '👤'}</span>} />
-          <div className="hero-info">
-            <div className="hero-name">{session.oppName}</div>
-            <div className="hero-sub">🃏 {view.opp.handCount} 手牌 · 📚 {view.opp.deckCount} 牌库</div>
+          <div className="hero-side">
+            <SkinImage skinKey={session.oppAvatar} alt={session.oppName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.oppAvatar] ?? '👤'}</span>} />
+            <div className="hero-info">
+              <div className="hero-name">{session.oppName}</div>
+              <div className="hero-sub">🃏 {view.opp.handCount} 手牌 · 📚 {view.opp.deckCount} 牌库</div>
+            </div>
+            {aiBubble && <div key={aiBubble.id} className="speech-bubble">{aiBubble.text}</div>}
           </div>
-          <div className="hero-numbers">
-            <span key={hpPulse.opp} className={hpPulse.opp > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.opp.hp}</span>
-            <span className="mana">◆ {view.opp.mana}/{view.opp.maxMana}</span>
+          <div className="hand opp-hand">
+            {Array.from({ length: view.opp.handCount }, (_, i) => (
+              <SkinImage key={i} skinKey="card_back" alt="牌背" className="card-back" fallback={<span className="card-back card-back-fallback" />} />
+            ))}
+          </div>
+          <div className={`hero-side right ${combatFx && combatFx.target === 'player' && !combatFx.attackerEnemy ? 'fx-shake' : ''}`}>
+            <div className="hero-numbers">
+              <span key={hpPulse.opp} className={hpPulse.opp > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.opp.hp}</span>
+              <span className="mana">◆ {view.opp.mana}/{view.opp.maxMana}</span>
+            </div>
             <span className="trap-count">埋伏 {view.opp.trapCount}/3</span>
+            {attacker && legal.includes('player') && <span className="attack-hint">可攻击</span>}
+            {floaters.filter((f) => f.side === 'opp' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
           </div>
-          {attacker && legal.includes('player') && <span className="attack-hint">可攻击</span>}
-          {floaters.filter((f) => f.side === 'opp' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
-          {aiBubble && <div key={aiBubble.id} className="speech-bubble">{aiBubble.text}</div>}
         </div>
 
         {/* 对手棋盘：后排在上 */}
@@ -554,30 +563,32 @@ export default function Battle({
           )}
         </div>
 
-        {/* 我的信息 */}
-        <div className={`hero-bar ${combatFx && combatFx.target === 'player' && combatFx.attackerEnemy ? 'fx-shake' : ''}`}>
-          <SkinImage skinKey={session.myAvatar} alt={session.myName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.myAvatar] ?? '👤'}</span>} />
-          <div className="hero-info">
-            <div className="hero-name">{session.myName}</div>
-            <div className="hero-sub">📚 {view.me.deckCount} 牌库</div>
+        {/* 底部：头像(左) | 手牌(中) | 气血/内力/埋伏(右) */}
+        <div className="hand-zone">
+          <div className="hero-side">
+            <SkinImage skinKey={session.myAvatar} alt={session.myName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.myAvatar] ?? '👤'}</span>} />
+            <div className="hero-info">
+              <div className="hero-name">{session.myName}</div>
+              <div className="hero-sub">📚 {view.me.deckCount} 牌库</div>
+            </div>
           </div>
-          <div className="hero-numbers">
-            <span key={hpPulse.me} className={hpPulse.me > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.me.hp}</span>
-            <span className="mana">◆ {view.me.mana}/{view.me.maxMana}</span>
+          <div className="hand">{view.me.hand.map(renderHandCard)}</div>
+          <div className={`hero-side right ${combatFx && combatFx.target === 'player' && combatFx.attackerEnemy ? 'fx-shake' : ''}`}>
+            <div className="hero-numbers">
+              <span key={hpPulse.me} className={hpPulse.me > 0 ? 'hp fx-pulse' : 'hp'}>❤ {view.me.hp}</span>
+              <span className="mana">◆ {view.me.mana}/{view.me.maxMana}</span>
+            </div>
+            {/* 我的埋伏区：可见卡名 */}
+            <div className="trap-row">
+              {view.me.traps.map((t, i) => (
+                <span key={i} className={`trap-slot ${t ? 'filled' : ''}`} title={t ? CARDS[t]?.desc : '空埋伏位'}>
+                  {t ? CARDS[t]?.name ?? '?' : '·'}
+                </span>
+              ))}
+            </div>
+            {floaters.filter((f) => f.side === 'me' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
           </div>
-          {/* 我的埋伏区：可见卡名 */}
-          <div className="trap-row">
-            {view.me.traps.map((t, i) => (
-              <span key={i} className={`trap-slot ${t ? 'filled' : ''}`} title={t ? CARDS[t]?.desc : '空埋伏位'}>
-                {t ? CARDS[t]?.name ?? '?' : '·'}
-              </span>
-            ))}
-          </div>
-          {floaters.filter((f) => f.side === 'me' && f.slot === 'hero').map((f) => <span key={f.id} className="floater">{f.text}</span>)}
         </div>
-
-        {/* 手牌 */}
-        <div className="hand">{view.me.hand.map(renderHandCard)}</div>
       </div>
 
       {/* 侧边栏 */}
