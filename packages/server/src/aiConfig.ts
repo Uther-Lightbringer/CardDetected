@@ -85,6 +85,8 @@ export async function chatCompletion(
         model: cfg.model,
         temperature: opts.temperature ?? 0.2,
         max_tokens: opts.maxTokens ?? 2048,
+        // V4 模型默认开启思考模式：游戏决策/测试场景不需要，关闭以省 token、降延迟
+        thinking: { type: 'disabled' },
         ...(opts.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
         messages,
       }),
