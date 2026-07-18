@@ -1,6 +1,11 @@
 # Web 客户端镜像：vite 构建（云模式 VITE_CLOUD=1）后用 nginx 托管静态页 + 反代游戏服务器
-FROM node:22-alpine AS build
+# 基础镜像默认走 daocloud 镜像站（服务器直连 Docker Hub 不通）；可用 --build-arg 覆盖
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
+ARG NGINX_IMAGE=docker.m.daocloud.io/library/nginx:alpine
+FROM $NODE_IMAGE AS build
 WORKDIR /app
+# 国内构建走 npmmirror，避免 npm 官方源超时
+ENV npm_config_registry=https://registry.npmmirror.com
 # 跳过 electron 二进制下载（只装依赖用于 vite 构建）
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY package.json package-lock.json ./
@@ -13,7 +18,7 @@ COPY packages/client packages/client
 # 云模式：隐藏设置页，服务器走同源 /ws 反代，单人 AI 走服务端 /api/ai/chat 代理
 RUN VITE_CLOUD=1 npm run build -w @cardetect/client
 
-FROM nginx:alpine
+FROM $NGINX_IMAGE
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/packages/client/dist /usr/share/nginx/html
 EXPOSE 80

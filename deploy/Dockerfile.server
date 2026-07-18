@@ -1,6 +1,11 @@
 # 游戏服务器镜像：esbuild 打成单文件后用极简 node 运行时启动（无需 node_modules）
-FROM node:22-alpine AS build
+# 基础镜像默认走 daocloud 镜像站（服务器直连 Docker Hub 不通）；网络环境好时可覆盖：
+#   docker build --build-arg NODE_IMAGE=node:22-alpine ...
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
+FROM $NODE_IMAGE AS build
 WORKDIR /app
+# 国内构建走 npmmirror，避免 npm 官方源超时
+ENV npm_config_registry=https://registry.npmmirror.com
 # 只装 shared + server 两个 workspace 的依赖，避免 electron 等客户端重型依赖
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
@@ -12,7 +17,7 @@ COPY packages/server packages/server
 # 复用 exe 打包脚本的 esbuild 步骤（BUNDLE_ONLY 跳过 SEA 注入）
 RUN cd packages/server && BUNDLE_ONLY=1 node build-server.mjs
 
-FROM node:22-alpine
+FROM $NODE_IMAGE
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /app/packages/server/build/server.cjs ./server.cjs

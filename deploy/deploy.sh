@@ -5,7 +5,8 @@
 set -euo pipefail
 
 REMOTE=${DEPLOY_HOST:-aliyun}
-DIR=${DEPLOY_DIR:-~/cardetect}
+# 相对路径（相对远端 home），避免 ~ 被本地 shell 提前展开
+DIR=${DEPLOY_DIR:-cardetect}
 
 if [[ -n $(git status --porcelain) ]]; then
   echo "⚠️  有未提交的改动，部署内容将只包含已提交（HEAD）的代码"
