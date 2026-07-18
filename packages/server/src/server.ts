@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
-import { randomBytes } from 'node:crypto';
-import express from 'express';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import express, { type RequestHandler } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   applyAction,
@@ -18,6 +18,7 @@ import {
 } from '@cardetect/shared';
 import { UserStore } from './store.js';
 import { loadAdminHtml } from './adminHtml.js';
+import { AiConfigStore, chatCompletion, type ChatMessage } from './aiConfig.js';
 import path from 'node:path';
 
 // ==================== 数据结构 ====================
@@ -66,8 +67,10 @@ export interface GameServerOptions {
 }
 
 export function startServer({ port, dataDir }: GameServerOptions): Server {
-  // 数据文件默认放在「启动目录/data」下：exe 双击运行时即 exe 同级目录
-  const store = new UserStore(path.join(dataDir ?? path.join(process.cwd(), 'data'), 'users.json'));
+  // 数据文件默认放在「启动目录/data」下：exe 双击运行时即 exe 同级目录；Docker 用 DATA_DIR 指到挂载卷
+  const dir = dataDir ?? path.join(process.cwd(), 'data');
+  const store = new UserStore(path.join(dir, 'users.json'));
+  const aiStore = new AiConfigStore(path.join(dir, 'ai-config.json'));
   const clients = new Set<ClientConn>();
   const rooms = new Map<string, Room>();
   const startedAt = Date.now();
@@ -75,10 +78,35 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
   const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const app = express();
+  // 部署在 nginx 反代之后时，req.ip 取 X-Forwarded-For（AI 代理按 IP 限流）
+  app.set('trust proxy', true);
+  app.use('/api', express.json({ limit: '256kb' }));
   const adminHtml = loadAdminHtml();
-  app.get(['/', '/admin.html'], (_req, res) => res.type('html').send(adminHtml));
 
-  app.get('/api/status', (_req, res) => {
+  // ---------- 管理面板鉴权（HTTP Basic，默认 admin/cardwar，ADMIN_USER/ADMIN_PASS 可覆盖） ----------
+  const adminUser = process.env.ADMIN_USER ?? 'admin';
+  const adminPass = process.env.ADMIN_PASS ?? 'cardwar';
+  const sha256 = (s: string): Buffer => createHash('sha256').update(s).digest();
+  const adminAuth: RequestHandler = (req, res, next) => {
+    const m = /^Basic (.+)$/.exec(req.headers.authorization ?? '');
+    if (m) {
+      const raw = Buffer.from(m[1], 'base64').toString();
+      const sep = raw.indexOf(':');
+      if (
+        sep > 0 &&
+        timingSafeEqual(sha256(raw.slice(0, sep)), sha256(adminUser)) &&
+        timingSafeEqual(sha256(raw.slice(sep + 1)), sha256(adminPass))
+      ) {
+        return next();
+      }
+    }
+    res.set('WWW-Authenticate', 'Basic realm="CardDetect Admin", charset="UTF-8"');
+    res.status(401).send('需要管理员登录');
+  };
+
+  app.get(['/', '/admin.html'], adminAuth, (_req, res) => res.type('html').send(adminHtml));
+
+  app.get('/api/status', adminAuth, (_req, res) => {
     res.json({
       uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
       startedAt: new Date(startedAt).toISOString(),
@@ -99,6 +127,67 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
         seed: r.seed ?? null,
       })),
     });
+  });
+
+  // ---------- AI 配置管理（需管理员登录） ----------
+  app.get('/api/admin/ai-config', adminAuth, (_req, res) => res.json(aiStore.view()));
+  app.post('/api/admin/ai-config', adminAuth, (req, res) => {
+    const b = (req.body ?? {}) as { model?: unknown; baseUrl?: unknown; enabled?: unknown; apiKey?: unknown };
+    const patch: { model?: string; baseUrl?: string; enabled?: boolean; apiKey?: string } = {};
+    if (typeof b.model === 'string' && b.model.trim()) patch.model = b.model.trim().slice(0, 64);
+    if (typeof b.baseUrl === 'string' && /^https?:\/\//.test(b.baseUrl)) patch.baseUrl = b.baseUrl.trim().slice(0, 128);
+    if (typeof b.enabled === 'boolean') patch.enabled = b.enabled;
+    // apiKey：传字符串才更新（空串=清除）；缺席=保持原值
+    if (typeof b.apiKey === 'string') patch.apiKey = b.apiKey.trim().slice(0, 128);
+    aiStore.update(patch);
+    res.json(aiStore.view());
+  });
+
+  // ---------- AI 聊天代理（游戏客户端用，无需登录，按 IP 限流防刷额度） ----------
+  const aiRatePerMin = Number(process.env.AI_RATE_PER_MIN ?? 20) || 20;
+  const aiHits = new Map<string, number[]>();
+  const aiRateOk = (ip: string): boolean => {
+    const now = Date.now();
+    const hits = (aiHits.get(ip) ?? []).filter((t) => now - t < 60_000);
+    if (hits.length >= aiRatePerMin) return false;
+    hits.push(now);
+    aiHits.set(ip, hits);
+    return true;
+  };
+  const MSG_ROLES = new Set(['system', 'user', 'assistant']);
+  const parseChatMessages = (body: unknown): ChatMessage[] | null => {
+    const msgs = (body as { messages?: unknown } | null)?.messages;
+    if (!Array.isArray(msgs) || msgs.length === 0 || msgs.length > 20) return null;
+    let total = 0;
+    for (const m of msgs) {
+      const { role, content } = (m ?? {}) as { role?: unknown; content?: unknown };
+      if (typeof role !== 'string' || !MSG_ROLES.has(role) || typeof content !== 'string' || !content) return null;
+      total += content.length;
+      if (total > 20_000) return null;
+    }
+    return msgs as ChatMessage[];
+  };
+  app.post('/api/ai/chat', async (req, res) => {
+    if (!aiRateOk(req.ip ?? 'unknown')) {
+      return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+    }
+    const cfg = aiStore.get();
+    if (!cfg.enabled || !cfg.apiKey) {
+      return res.status(503).json({ error: '服务器未配置 AI 模型' });
+    }
+    const messages = parseChatMessages(req.body);
+    if (!messages) return res.status(400).json({ error: '请求格式错误' });
+    const { responseFormat, temperature } = (req.body ?? {}) as { responseFormat?: unknown; temperature?: unknown };
+    const temp = typeof temperature === 'number' && temperature >= 0 && temperature <= 2 ? temperature : undefined;
+    try {
+      const content = await chatCompletion(cfg, messages, {
+        responseFormat: responseFormat === 'json' ? 'json' : 'text',
+        temperature: temp,
+      });
+      res.json({ content });
+    } catch (e) {
+      res.status(502).json({ error: e instanceof Error ? e.message : 'AI 调用失败' });
+    }
   });
 
   const httpServer = createServer(app);

@@ -1,0 +1,38 @@
+# CardDetect 云端一体化部署：游戏服务器 + Web 客户端（nginx 反代）
+# 用法：docker compose up -d --build
+# 可用环境变量（也可写在 .env 里）：
+#   ADMIN_USER / ADMIN_PASS   管理面板账号密码（默认 admin / cardwar）
+#   DEEPSEEK_API_KEY          首次启动时播种 AI 配置（之后以管理面板/data 卷里的配置为准）
+#   AI_RATE_PER_MIN           AI 代理每 IP 每分钟限流（默认 20）
+services:
+  server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.server
+    environment:
+      PORT: 9000
+      NO_OPEN: '1'
+      DATA_DIR: /data
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-cardwar}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_RATE_PER_MIN: ${AI_RATE_PER_MIN:-20}
+    volumes:
+      - server-data:/data
+    ports:
+      # 桌面版（Electron）客户端直连用；web 版走 nginx 同源反代不需要它
+      - '9000:9000'
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    depends_on:
+      - server
+    ports:
+      - '80:80'
+    restart: unless-stopped
+
+volumes:
+  server-data:

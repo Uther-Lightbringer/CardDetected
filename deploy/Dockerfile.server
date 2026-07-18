@@ -1,0 +1,21 @@
+# 游戏服务器镜像：esbuild 打成单文件后用极简 node 运行时启动（无需 node_modules）
+FROM node:22-alpine AS build
+WORKDIR /app
+# 只装 shared + server 两个 workspace 的依赖，避免 electron 等客户端重型依赖
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+RUN npm ci -w @cardetect/shared -w @cardetect/server
+COPY packages/shared packages/shared
+COPY packages/server packages/server
+# 复用 exe 打包脚本的 esbuild 步骤（BUNDLE_ONLY 跳过 SEA 注入）
+RUN cd packages/server && BUNDLE_ONLY=1 node build-server.mjs
+
+FROM node:22-alpine
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /app/packages/server/build/server.cjs ./server.cjs
+# 数据（users.json / ai-config.json）挂卷持久化：-v server-data:/data，环境变量 DATA_DIR=/data
+EXPOSE 9000
+CMD ["node", "server.cjs"]

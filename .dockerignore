@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+.git
+**/dist
+packages/server/build
+packages/server/release
+packages/client/release
+data
+packages/server/data
+*.log

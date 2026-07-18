@@ -8,7 +8,8 @@ export default function Menu({
 }: {
   onSingle: () => void;
   onMulti: () => void;
-  onSettings: () => void;
+  /** 云部署模式（VITE_CLOUD=1）不显示设置入口 */
+  onSettings?: () => void;
   onExit: () => void;
 }): JSX.Element {
   return (
@@ -28,7 +29,7 @@ export default function Menu({
         <div className="menu-buttons">
           <button className="btn btn-menu" onClick={onSingle}>单人游戏</button>
           <button className="btn btn-menu" onClick={onMulti}>多人游戏</button>
-          <button className="btn btn-menu" onClick={onSettings}>设　置</button>
+          {onSettings && <button className="btn btn-menu" onClick={onSettings}>设　置</button>}
           <button className="btn btn-menu btn-danger" onClick={onExit}>退出游戏</button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameState, PlayerIndex, RoomInfo, UserProfile } from '@cardetect/shared';
 import { WsClient } from './net';
-import { loadSettings, saveSettings, serverUrl, type Settings } from './settings';
+import { CLOUD_MODE, loadSettings, saveSettings, serverUrl, type Settings } from './settings';
 import { defaultDeck, lastSave, pushHistory, updateSave, type SaveProfile, type SavedGame } from './saves';
 import { LocalAdapter, RemoteAdapter, type BattleAdapter } from './game/adapter';
 import Menu from './views/Menu';
@@ -65,11 +65,16 @@ export default function App(): JSX.Element {
   // ---------- 单人游戏 ----------
   const startSingle = useCallback(
     (save: SaveProfile, resume?: SavedGame | null) => {
-      if (settings.aiProvider === 'deepseek' && !settings.deepseekKey) {
+      if (!CLOUD_MODE && settings.aiProvider === 'deepseek' && !settings.deepseekKey) {
         toast('已选择 Deepseek 但未填写 API Key，请先在设置中配置（本局先用内置机器人）');
       }
       const deck = defaultDeck(save);
-      const oppName = settings.aiProvider === 'deepseek' && settings.deepseekKey ? `Deepseek · ${settings.deepseekModel}` : '内置机器人';
+      // 云模式：单人固定走服务端 AI 代理（Deepseek），无需任何配置
+      const oppName = CLOUD_MODE
+        ? 'Deepseek · 云端'
+        : settings.aiProvider === 'deepseek' && settings.deepseekKey
+          ? `Deepseek · ${settings.deepseekModel}`
+          : '内置机器人';
       singleCtxRef.current = { saveId: save.id, deckName: deck.name, oppName, lastState: resume?.state ?? null };
       const adapter = new LocalAdapter(settings, {
         deck: deck.cards,
@@ -94,7 +99,7 @@ export default function App(): JSX.Element {
         myName: save.name,
         myAvatar: save.avatar,
         oppName,
-        oppAvatar: settings.aiProvider === 'deepseek' && settings.deepseekKey ? 'avatar_7' : 'avatar_5',
+        oppAvatar: CLOUD_MODE || (settings.aiProvider === 'deepseek' && settings.deepseekKey) ? 'avatar_7' : 'avatar_5',
       });
       setScreen('battle');
     },
@@ -232,7 +237,7 @@ export default function App(): JSX.Element {
   );
 
   const handleMultiplayer = useCallback(async () => {
-    if (!settings.serverHost || !settings.serverPort) {
+    if (!CLOUD_MODE && (!settings.serverHost || !settings.serverPort)) {
       toast('请先在设置中配置服务器 IP 和端口');
       setScreen('settings');
       return;
@@ -243,8 +248,8 @@ export default function App(): JSX.Element {
       setNet(client);
       setScreen('login');
     } catch {
-      toast(`无法连接服务器 ${settings.serverHost}:${settings.serverPort}，请检查设置或联系服主`);
-      setScreen('settings');
+      toast(CLOUD_MODE ? '无法连接游戏服务器，请稍后再试' : `无法连接服务器 ${settings.serverHost}:${settings.serverPort}，请检查设置或联系服主`);
+      if (!CLOUD_MODE) setScreen('settings');
     }
   }, [settings, toast, attachNetListeners]);
 
@@ -345,7 +350,12 @@ export default function App(): JSX.Element {
   return (
     <div className="app">
       {screen === 'menu' && (
-        <Menu onSingle={() => setScreen('saves')} onMulti={handleMultiplayer} onSettings={() => setScreen('settings')} onExit={handleExitGame} />
+        <Menu
+          onSingle={() => setScreen('saves')}
+          onMulti={handleMultiplayer}
+          onSettings={CLOUD_MODE ? undefined : () => setScreen('settings')}
+          onExit={handleExitGame}
+        />
       )}
       {screen === 'saves' && (
         <Saves

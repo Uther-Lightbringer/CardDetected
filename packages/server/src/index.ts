@@ -2,7 +2,8 @@ import { exec } from 'node:child_process';
 import { startServer } from './server.js';
 
 const port = Number(process.env.PORT ?? 9000);
-const server = startServer({ port });
+// DATA_DIR：账号与 AI 配置文件的存放目录（Docker 部署时指向挂载卷）
+const server = startServer({ port, dataDir: process.env.DATA_DIR });
 
 server.on('listening', () => {
   const adminUrl = `http://127.0.0.1:${port}/admin.html`;

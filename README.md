@@ -43,6 +43,26 @@ npm run dev:client   # 另开一个终端，启动客户端（http://localhost:5
 把同名图片文件放进该目录即可替换（如 `menu_bg.png`、`avatars/avatar_1.png`、`cards/sniper.png`），
 图片缺失时自动显示占位样式，无需改代码。
 
+## 云端部署（Docker）
+
+一台装了 Docker 的 Linux 服务器即可同时托管游戏服务器和 Web 客户端：
+
+```bash
+# 本地一键部署（deploy/deploy.sh）：git archive 打包已提交代码 → ssh 传输 → 远端 compose 构建
+npm run deploy                          # 默认远端 aliyun、目录 ~/cardetect
+DEPLOY_HOST=myserver npm run deploy     # 也可指定其他 ssh 别名
+```
+
+也可以直接在服务器上手动操作：`git clone` 后 `docker compose up -d --build`。
+
+部署后：
+- **Web 客户端**：`http://<服务器IP>/` —— 与桌面版界面一致，但无「设置」入口（云模式 `VITE_CLOUD=1` 构建）：多人自动连同源 `/ws`（nginx 反代），单人固定使用服务端托管的大模型。
+- **管理面板**：`http://<服务器IP>/admin.html`（或 `:9000/admin.html`），HTTP Basic 登录，默认 **admin / cardwar**（`ADMIN_USER`/`ADMIN_PASS` 环境变量可改）。面板可查看在线状态，并可在线修改 **AI 配置**（API Key/模型/接口地址/启停），保存即生效、key 只脱敏回显。
+- **桌面版客户端**仍可在设置里填 `<服务器IP>:9000` 直连（9000 端口已暴露）。
+- 账号与 AI 配置持久化在 docker 卷 `server-data`（容器内 `/data`）。
+
+AI 代理：客户端单人模式只调服务端 `POST /api/ai/chat`（标准 messages 格式），服务端按配置转发给模型厂商（目前支持 Deepseek，OpenAI 兼容协议）；按 IP 限流（`AI_RATE_PER_MIN`，默认 20 次/分钟）；未配置 key 时返回 503，客户端自动回落内置机器人。首次启动可用 `DEEPSEEK_API_KEY` 环境变量播种 key，之后以管理面板保存的配置为准。
+
 ## 打包为 Windows 可执行文件
 
 ```bash
@@ -71,6 +91,11 @@ npm run build        # 客户端生产构建
 |---|---|---|
 | `PORT` | 服务器监听端口 | 9000 |
 | `NO_OPEN` | 设为 `1` 时服务器启动不自动打开管理面板 | 自动打开 |
+| `DATA_DIR` | 账号/AI 配置文件目录 | `./data` |
+| `ADMIN_USER` / `ADMIN_PASS` | 管理面板 Basic Auth 账号密码 | `admin` / `cardwar` |
+| `DEEPSEEK_API_KEY` | 首次启动播种 AI key（之后以管理面板为准） | 空 |
+| `AI_RATE_PER_MIN` | AI 代理每 IP 每分钟限流 | 20 |
+| `VITE_CLOUD` | 客户端构建时设为 `1` 即云模式（无设置页，同源反代） | 关 |
 
 ## 当前版本说明（v0.1）
 

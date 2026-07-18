@@ -4,6 +4,7 @@
  *    并把 src/adminHtml.ts 替换为「内嵌管理面板 HTML」的版本（exe 不依赖外部文件）
  * 2. Node SEA：以本机 node.exe 为底座，注入应用代码 blob，生成 CardDetectServer.exe
  * 用法：node build-server.mjs
+ * Docker 镜像构建只需要第 1 步：BUNDLE_ONLY=1 node build-server.mjs
  */
 import { build } from 'esbuild';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -45,6 +46,11 @@ await build({
   logLevel: 'warning',
 });
 console.log('✓ [1/4] esbuild 打包完成: build/server.cjs');
+
+if (process.env.BUNDLE_ONLY) {
+  // Docker 镜像构建到此为止（容器内直接用 node 跑 server.cjs）
+  process.exit(0);
+}
 
 // ---------- 2. 生成 SEA blob ----------
 const seaConfig = {

@@ -267,9 +267,17 @@ export function resolveAiAction(raw: AiAction, state: GameState, side: PlayerInd
 
 // ==================== API 调用 ====================
 
+/**
+ * 大模型调用端点：
+ * - direct：浏览器直连厂商（本地/Electron，key 在用户自己的设置里）
+ * - proxy：服务端代理 /api/ai/chat（云部署，key 在服务端，客户端零配置、不感知厂商）
+ */
+export type LlmEndpoint =
+  | { kind: 'direct'; apiKey: string; model: string }
+  | { kind: 'proxy'; url: string };
+
 export async function requestDeepseekTurn(
-  apiKey: string,
-  model: string,
+  endpoint: LlmEndpoint,
   state: GameState,
   side: PlayerIndex,
   recentLog: string[],
@@ -280,30 +288,40 @@ export async function requestDeepseekTurn(
   const prompt = buildPrompt(state, side, recentLog, intel);
   const startedAt = Date.now();
   const at = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const model = endpoint.kind === 'direct' ? endpoint.model : '服务端代理';
   let recorded = false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: prompt },
+  ];
   try {
-    const res = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model || 'deepseek-chat',
-        temperature: 0.2,
-        response_format: { type: 'json_object' }, // 强制合法 JSON
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`Deepseek API 错误: ${res.status}`);
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = data.choices?.[0]?.message?.content ?? '';
+    const res =
+      endpoint.kind === 'direct'
+        ? await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${endpoint.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: endpoint.model || 'deepseek-chat',
+              temperature: 0.2,
+              response_format: { type: 'json_object' }, // 强制合法 JSON
+              messages,
+            }),
+          })
+        : await fetch(endpoint.url, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages, responseFormat: 'json', temperature: 0.2 }),
+          });
+    if (!res.ok) throw new Error(`AI 服务错误: ${res.status}`);
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; content?: string };
+    const content = endpoint.kind === 'direct' ? data.choices?.[0]?.message?.content ?? '' : data.content ?? '';
     // 先记录原始响应（即使后续解析失败也能看到模型实际输出）
     onDebug?.({ turn: state.turn, at, model, durationMs: Date.now() - startedAt, prompt, response: content });
     recorded = true;

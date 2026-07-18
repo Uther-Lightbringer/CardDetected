@@ -1,0 +1,19 @@
+# Web 客户端镜像：vite 构建（云模式 VITE_CLOUD=1）后用 nginx 托管静态页 + 反代游戏服务器
+FROM node:22-alpine AS build
+WORKDIR /app
+# 跳过 electron 二进制下载（只装依赖用于 vite 构建）
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+RUN npm ci -w @cardetect/shared -w @cardetect/client
+COPY packages/shared packages/shared
+COPY packages/client packages/client
+# 云模式：隐藏设置页，服务器走同源 /ws 反代，单人 AI 走服务端 /api/ai/chat 代理
+RUN VITE_CLOUD=1 npm run build -w @cardetect/client
+
+FROM nginx:alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/packages/client/dist /usr/share/nginx/html
+EXPOSE 80

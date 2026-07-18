@@ -32,6 +32,24 @@
     .tag.lobby { background: #232836; color: #8a94a6; }
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #4bd8a2; margin-right: 8px; }
     .refresh { color: #5a6372; font-size: 12px; margin-top: 8px; }
+    /* AI 配置表单 */
+    .panel { background: #1c2029; border: 1px solid #2a2f3a; border-radius: 10px; padding: 20px 24px; max-width: 560px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 13px; color: #8a94a6; margin-bottom: 6px; }
+    .field input[type=text], .field input[type=password], .field select {
+      width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #2a2f3a;
+      background: #12141a; color: #d8dde6; font-size: 13px; outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: #e8b34b; }
+    .field .inline { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #d8dde6; }
+    .btn {
+      padding: 8px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px;
+      background: #e8b34b; color: #12141a; font-weight: bold;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .form-msg { font-size: 12px; margin-top: 10px; min-height: 16px; }
+    .form-msg.ok { color: #4bd8a2; }
+    .form-msg.fail { color: #e86b6b; }
   </style>
 </head>
 <body>
@@ -52,6 +70,38 @@
   <section>
     <h2>游戏房间</h2>
     <div id="rooms"></div>
+  </section>
+
+  <section>
+    <h2>AI 配置（单人模式大模型）</h2>
+    <div class="panel">
+      <div class="field">
+        <label>模型厂商</label>
+        <select id="aiProvider" disabled>
+          <option value="deepseek">Deepseek</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>API Key <span id="aiKeyState" style="color:#5a6372"></span></label>
+        <input type="password" id="aiKey" placeholder="留空表示不修改" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label>模型</label>
+        <input type="text" id="aiModel" />
+      </div>
+      <div class="field">
+        <label>接口地址（Base URL）</label>
+        <input type="text" id="aiBaseUrl" />
+      </div>
+      <div class="field">
+        <label class="inline"><input type="checkbox" id="aiClearKey" /> 清除已保存的 Key</label>
+      </div>
+      <div class="field">
+        <label class="inline"><input type="checkbox" id="aiEnabled" /> 启用 AI 代理（停用时客户端单人模式回落内置机器人）</label>
+      </div>
+      <button class="btn" id="aiSave">保存配置</button>
+      <div class="form-msg" id="aiMsg"></div>
+    </div>
   </section>
 
   <script>
@@ -94,8 +144,49 @@
         console.error('刷新失败', e);
       }
     }
+    // ---------- AI 配置 ----------
+    async function loadAiConfig() {
+      try {
+        const res = await fetch('/api/admin/ai-config');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        document.getElementById('aiModel').value = cfg.model;
+        document.getElementById('aiBaseUrl').value = cfg.baseUrl;
+        document.getElementById('aiEnabled').checked = cfg.enabled;
+        document.getElementById('aiKeyState').textContent = cfg.hasKey ? `（已保存 ${cfg.keyPreview}）` : '（未配置）';
+      } catch (e) { console.error('加载 AI 配置失败', e); }
+    }
+    document.getElementById('aiSave').addEventListener('click', async () => {
+      const msg = document.getElementById('aiMsg');
+      const body = {
+        model: document.getElementById('aiModel').value,
+        baseUrl: document.getElementById('aiBaseUrl').value,
+        enabled: document.getElementById('aiEnabled').checked,
+      };
+      const key = document.getElementById('aiKey').value;
+      if (document.getElementById('aiClearKey').checked) body.apiKey = '';
+      else if (key) body.apiKey = key;
+      try {
+        const res = await fetch('/api/admin/ai-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        msg.className = 'form-msg ok';
+        msg.textContent = '已保存';
+        document.getElementById('aiKey').value = '';
+        document.getElementById('aiClearKey').checked = false;
+        loadAiConfig();
+      } catch (e) {
+        msg.className = 'form-msg fail';
+        msg.textContent = `保存失败：${e.message}`;
+      }
+    });
+
     refresh();
     setInterval(refresh, 2000);
+    loadAiConfig();
   </script>
 </body>
 </html>

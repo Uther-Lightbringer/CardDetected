@@ -1,4 +1,11 @@
 /** 客户端设置：localStorage 持久化 */
+
+/**
+ * 云部署模式（构建时注入 VITE_CLOUD=1）：
+ * 隐藏设置页；多人服务器走同源 nginx 反代（/ws）；单人 AI 走服务端代理（/api/ai/chat），无需任何配置
+ */
+export const CLOUD_MODE = import.meta.env.VITE_CLOUD === '1';
+
 export interface Settings {
   /** 多人游戏服务器 */
   serverHost: string;
@@ -34,5 +41,10 @@ export function saveSettings(s: Settings): void {
 }
 
 export function serverUrl(s: Settings): string {
+  if (CLOUD_MODE) {
+    // 同源反代：nginx 把 /ws 转发到游戏服务器
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${proto}://${location.host}/ws`;
+  }
   return `ws://${s.serverHost}:${s.serverPort}`;
 }

@@ -13,8 +13,8 @@ import {
   type PlayerIndex,
 } from '@cardetect/shared';
 import type { WsClient } from '../net';
-import type { Settings } from '../settings';
-import { requestDeepseekTurn, resolveAiAction, type AiIntel, type LlmDebugRecord } from '../ai/deepseek';
+import { CLOUD_MODE, type Settings } from '../settings';
+import { requestDeepseekTurn, resolveAiAction, type AiIntel, type LlmDebugRecord, type LlmEndpoint } from '../ai/deepseek';
 
 /** 对战 UI 与数据源之间的桥：单人（本地引擎+AI）与多人（服务器）共用 */
 export interface BattleCallbacks {
@@ -137,11 +137,16 @@ export class LocalAdapter implements BattleAdapter {
       return;
     }
     let modelActions: GameAction[] | null = null;
-    if (this.settings.aiProvider === 'deepseek' && this.settings.deepseekKey) {
+    // 云模式：走服务端代理（key 在服务端）；本地模式：用户自填 key 直连
+    const endpoint: LlmEndpoint | null = CLOUD_MODE
+      ? { kind: 'proxy', url: '/api/ai/chat' }
+      : this.settings.aiProvider === 'deepseek' && this.settings.deepseekKey
+        ? { kind: 'direct', apiKey: this.settings.deepseekKey, model: this.settings.deepseekModel }
+        : null;
+    if (endpoint) {
       try {
         const turn = await requestDeepseekTurn(
-          this.settings.deepseekKey,
-          this.settings.deepseekModel,
+          endpoint,
           this.state,
           this.aiSide,
           this.recentLog,

@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { createServer as createHttpServer } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,10 @@ import { buildDefaultDeck, type ClientMessage, type GameView, type RoomInfo, typ
 import { startServer } from '../src/server.js';
 
 process.env.NO_OPEN = '1';
+// 隔离外部环境：AI key 播种走测试内显式配置，保证「初始无 key → 503」的断言成立
+delete process.env.DEEPSEEK_API_KEY;
 const PORT = 9123;
+const STUB_PORT = 9124;
 const URL = `ws://127.0.0.1:${PORT}`;
 
 /** 极简测试客户端：按消息类型分发 */
@@ -207,14 +211,76 @@ async function main(): Promise<void> {
   assert.equal(A.room?.state, 'waiting');
   console.log('  ✓ 对局结束后房间复位');
 
-  // 8. 管理面板 API
-  const status = (await (await fetch(`http://127.0.0.1:${PORT}/api/status`)).json()) as {
+  // 8. 管理面板 API（HTTP Basic 鉴权：默认 admin/cardwar）
+  const adminHead = { Authorization: `Basic ${Buffer.from('admin:cardwar').toString('base64')}` };
+  const noAuth = await fetch(`http://127.0.0.1:${PORT}/api/status`);
+  assert.equal(noAuth.status, 401, '无凭据访问 /api/status 应 401');
+  const badAuth = await fetch(`http://127.0.0.1:${PORT}/api/status`, {
+    headers: { Authorization: `Basic ${Buffer.from('admin:wrong').toString('base64')}` },
+  });
+  assert.equal(badAuth.status, 401, '错误凭据应 401');
+  console.log('  ✓ 管理面板 Basic Auth 拦截生效');
+  const status = (await (await fetch(`http://127.0.0.1:${PORT}/api/status`, { headers: adminHead })).json()) as {
     clients: { username: string }[];
     rooms: { name: string; players: string[] }[];
   };
   assert.ok(status.clients.some((c) => c.username === '侦探甲'));
   assert.ok(status.rooms.some((r) => r.name === '午夜谜案' && r.players.length === 2));
   console.log('  ✓ 管理面板 /api/status 数据正确');
+
+  // 8.1 AI 配置管理 + /api/ai/chat 代理（上游用本地桩模拟 deepseek）
+  const cfgRes = await (await fetch(`http://127.0.0.1:${PORT}/api/admin/ai-config`, { headers: adminHead })).json() as {
+    hasKey: boolean;
+    enabled: boolean;
+  };
+  assert.equal(cfgRes.hasKey, false, '初始应无 key');
+  // 未配置 key 时：/api/ai/chat 返回 503，客户端据此回落内置机器人
+  const noKey = await fetch(`http://127.0.0.1:${PORT}/api/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  assert.equal(noKey.status, 503, '未配置 key 应 503');
+  // 管理面板保存配置（key 指向本地桩），key 不应回传明文
+  const stub = createHttpServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const auth = req.headers.authorization;
+      assert.equal(auth, 'Bearer sk-test-key-123456', '代理应携带配置的 key');
+      const parsed = JSON.parse(body) as { model: string; messages: unknown[] };
+      assert.equal(parsed.model, 'deepseek-chat');
+      assert.ok(Array.isArray(parsed.messages));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { content: '{"actions":[{"type":"end_turn"}]}' } }] }));
+    });
+  });
+  await new Promise<void>((r) => stub.listen(STUB_PORT, r));
+  const save = await fetch(`http://127.0.0.1:${PORT}/api/admin/ai-config`, {
+    method: 'POST',
+    headers: { ...adminHead, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: 'sk-test-key-123456', baseUrl: `http://127.0.0.1:${STUB_PORT}`, enabled: true }),
+  });
+  assert.equal(save.status, 200);
+  const saved = (await save.json()) as { hasKey: boolean; keyPreview: string | null; baseUrl: string };
+  assert.ok(saved.hasKey && saved.keyPreview && !saved.keyPreview.includes('test-key-123'), 'key 应脱敏回显');
+  console.log('  ✓ AI 配置保存/脱敏回显正确');
+  const chat = await fetch(`http://127.0.0.1:${PORT}/api/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: '该你行动' }], responseFormat: 'json' }),
+  });
+  assert.equal(chat.status, 200);
+  const chatData = (await chat.json()) as { content: string };
+  assert.ok(chatData.content.includes('end_turn'), '代理应透传上游 content');
+  const badChat = await fetch(`http://127.0.0.1:${PORT}/api/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [] }),
+  });
+  assert.equal(badChat.status, 400, '空 messages 应 400');
+  stub.close();
+  console.log('  ✓ /api/ai/chat 代理（限流/校验/透传）正确');
 
   // 9. 多人带牌组开局：合法牌组正常使用；非法牌组（19 张）报错并兜底默认牌组
   const D = new TestClient('D');
