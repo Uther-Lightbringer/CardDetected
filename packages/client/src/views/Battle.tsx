@@ -17,7 +17,8 @@ import {
 } from '@cardetect/shared';
 import type { BattleSession } from '../App';
 import { SYSTEM_PROMPT, type LlmDebugRecord } from '../ai/deepseek';
-import { AVATAR_FALLBACKS, SkinImage } from '../skin';
+import { AvatarImage } from '../avatar';
+import { SkinImage } from '../skin';
 
 type ExitDest = 'menu' | 'rematch' | 'room' | 'lobby';
 
@@ -500,7 +501,7 @@ export default function Battle({
           onClick={clickOppHero}
         >
           <div className="hero-side">
-            <SkinImage skinKey={session.oppAvatar} alt={session.oppName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.oppAvatar] ?? '👤'}</span>} />
+            <AvatarImage avatar={session.oppAvatar} className="avatar-img" />
             <div className="hero-info">
               <div className="hero-name">{session.oppName}</div>
               <div className="hero-sub">🃏 {view.opp.handCount} 手牌 · 📚 {view.opp.deckCount} 牌库</div>
@@ -572,7 +573,7 @@ export default function Battle({
         {/* 底部：头像(左) | 手牌(中) | 气血/内力/埋伏(右) */}
         <div className="hand-zone">
           <div className="hero-side">
-            <SkinImage skinKey={session.myAvatar} alt={session.myName} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[session.myAvatar] ?? '👤'}</span>} />
+            <AvatarImage avatar={session.myAvatar} className="avatar-img" />
             <div className="hero-info">
               <div className="hero-name">{session.myName}</div>
               <div className="hero-sub">📚 {view.me.deckCount} 牌库</div>

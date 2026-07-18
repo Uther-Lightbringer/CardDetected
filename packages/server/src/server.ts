@@ -43,6 +43,12 @@ interface Room {
 }
 
 const AVATARS = new Set(Array.from({ length: 8 }, (_, i) => `avatar_${i + 1}`));
+/** 自定义头像：128×128 JPEG data URL（客户端已裁剪压缩），只认 png/jpeg/webp 三种 MIME */
+const AVATAR_DATA_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const AVATAR_DATA_MAX_LEN = 150_000;
+/** 头像合法性：预设 key，或尺寸受限的 data URL */
+const validAvatar = (a: string): boolean =>
+  AVATARS.has(a) || (a.length <= AVATAR_DATA_MAX_LEN && AVATAR_DATA_RE.test(a));
 
 /** 断线重连宽限：对局中掉线后保留座位的时间，超时判负 */
 export const RESUME_GRACE_MS = 60_000;
@@ -191,7 +197,10 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
   const handlers: { [K in ClientMessage['type']]?: (c: ClientConn, m: Extract<ClientMessage, { type: K }>) => void } = {
     register(c, m) {
       if (c.user) return err(c.ws, 'already_auth', '你已登录');
-      const avatar = AVATARS.has(m.avatar) ? m.avatar : 'avatar_1';
+      if (!validAvatar(m.avatar ?? '')) {
+        return err(c.ws, 'bad_avatar', '头像不合法：仅支持预设头像或 PNG/JPG/WebP 图片');
+      }
+      const avatar = m.avatar;
       const msg = store.register(m.username ?? '', m.password ?? '', avatar);
       if (msg) return err(c.ws, 'register_fail', msg);
       c.user = { username: m.username, avatar };

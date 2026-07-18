@@ -447,3 +447,8 @@ input:focus, select:focus { border-color: var(--amber); }
   .deck-panel { width: 100%; }
   .deck-rows, .pool-groups { overflow: visible; }
 }
+
+/* ---------- 自定义头像 ---------- */
+.avatar-picker .avatar-grid { margin-bottom: 4px; }
+.avatar-picker .settings-hint { margin-top: 4px; }
+.avatar-error { color: var(--red); }

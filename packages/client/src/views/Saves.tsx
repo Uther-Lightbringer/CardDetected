@@ -1,23 +1,12 @@
 import { useState } from 'react';
 import { createSave, defaultDeck, deleteSave, loadSaves, setLastSaveId, type SaveProfile } from '../saves';
-import { AVATAR_FALLBACKS, AVATAR_KEYS, SkinImage } from '../skin';
+import { AvatarImage, AvatarPicker } from '../avatar';
 
 /** 本地时间格式化：YYYY-MM-DD HH:mm */
 function fmtTime(ts: number): string {
   const d = new Date(ts);
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function Avatar({ avatar, className }: { avatar: string; className?: string }): JSX.Element {
-  return (
-    <SkinImage
-      skinKey={avatar}
-      alt={avatar}
-      className={className ?? 'avatar-img'}
-      fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[avatar] ?? '👤'}</span>}
-    />
-  );
 }
 
 /** 单人存档：列表 / 存档主页 / 对战记录（同屏内切换） */
@@ -39,7 +28,7 @@ export default function Saves({
   const [saves, setSaves] = useState<SaveProfile[]>(loadSaves());
   const [view, setView] = useState<'list' | 'home' | 'history'>(currentSave ? 'home' : 'list');
   const [newName, setNewName] = useState('');
-  const [newAvatar, setNewAvatar] = useState(AVATAR_KEYS[0]);
+  const [newAvatar, setNewAvatar] = useState('avatar_1');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const reload = (): void => setSaves(loadSaves());
@@ -75,7 +64,7 @@ export default function Saves({
         <div className="page-card">
           <h2 className="page-title">{save.name} 的存档</h2>
           <div className="save-home-info">
-            <Avatar avatar={save.avatar} className="avatar-img avatar-lg" />
+            <AvatarImage avatar={save.avatar} className="avatar-img avatar-lg" />
             <div>
               <div className="save-item-sub">创建于 {fmtTime(save.createdAt)}</div>
               <div className="save-item-sub">默认牌组：{defaultDeck(save).name}</div>
@@ -135,7 +124,7 @@ export default function Saves({
           {saves.length === 0 && <div className="empty-hint">还没有存档，先在下方新建一个吧</div>}
           {saves.map((s) => (
             <div key={s.id} className="save-item" onClick={() => enter(s)}>
-              <Avatar avatar={s.avatar} />
+              <AvatarImage avatar={s.avatar} />
               <div className="save-item-info">
                 <div className="save-item-name">
                   {s.name}
@@ -167,17 +156,7 @@ export default function Saves({
           </div>
           <div className="form-row">
             <label>选择头像</label>
-            <div className="avatar-grid">
-              {AVATAR_KEYS.map((key) => (
-                <button
-                  key={key}
-                  className={newAvatar === key ? 'avatar-option selected' : 'avatar-option'}
-                  onClick={() => setNewAvatar(key)}
-                >
-                  <Avatar avatar={key} />
-                </button>
-              ))}
-            </div>
+            <AvatarPicker value={newAvatar} onChange={setNewAvatar} />
           </div>
           <div className="form-actions">
             <button className="btn" onClick={create} disabled={!newName.trim()}>创建存档</button>

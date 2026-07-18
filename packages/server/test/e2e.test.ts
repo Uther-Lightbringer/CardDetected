@@ -134,6 +134,23 @@ async function main(): Promise<void> {
   C.close();
   console.log('  ✓ 错误密码被拒绝');
 
+  // 1.2 自定义头像校验：非法 avatar 拒绝（bad_avatar），合法 data URL 原样保存
+  const H = new TestClient('H');
+  await H.open();
+  H.send({ type: 'register', username: '头像怪', password: 'pass1234', avatar: 'evil.exe' });
+  const avatarErr1 = (await H.waitFor('error')) as Extract<ServerMessage, { type: 'error' }>;
+  assert.equal(avatarErr1.code, 'bad_avatar');
+  const hugeAvatar = `data:image/png;base64,${'A'.repeat(150_001)}`;
+  H.send({ type: 'register', username: '头像怪', password: 'pass1234', avatar: hugeAvatar });
+  const avatarErr2 = (await H.waitFor('error')) as Extract<ServerMessage, { type: 'error' }>;
+  assert.equal(avatarErr2.code, 'bad_avatar');
+  const tinyAvatar = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  H.send({ type: 'register', username: '头像侠', password: 'pass1234', avatar: tinyAvatar });
+  const authH = (await H.waitFor('auth_ok')) as Extract<ServerMessage, { type: 'auth_ok' }>;
+  assert.equal(authH.user.avatar, tinyAvatar, '合法 data URL 头像应原样保存下发');
+  H.close();
+  console.log('  ✓ 自定义头像注册校验（非法拒绝 / 合法 data URL 原样保存）');
+
   // 2. A 建房，B 应在大厅看到
   A.send({ type: 'create_room', name: '午夜谜案' });
   await A.waitFor('room_update');

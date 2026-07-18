@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { RoomInfo } from '@cardetect/shared';
 import type { WsClient } from '../net';
 import { defaultDeck, lastSave } from '../saves';
-import { AVATAR_FALLBACKS, SkinImage } from '../skin';
+import { AvatarImage } from '../avatar';
 
 /** 多人建房/加入时附带的牌组：最近使用存档的默认牌组；无存档则不带（服务器兜底） */
 function myDeck(): string[] | undefined {
@@ -46,12 +46,7 @@ export default function Lobby({
                 <div className="room-item-players">
                   {r.players.map((p) => (
                     <span key={p.username} className="room-player">
-                      <SkinImage
-                        skinKey={p.avatar}
-                        alt={p.username}
-                        className="avatar-img avatar-sm"
-                        fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[p.avatar] ?? '👤'}</span>}
-                      />
+                      <AvatarImage avatar={p.avatar} className="avatar-img avatar-sm" />
                       {p.username}
                     </span>
                   ))}

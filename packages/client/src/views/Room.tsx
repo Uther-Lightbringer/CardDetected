@@ -1,6 +1,6 @@
 import type { RoomInfo } from '@cardetect/shared';
 import type { WsClient } from '../net';
-import { AVATAR_FALLBACKS, SkinImage } from '../skin';
+import { AvatarImage } from '../avatar';
 
 export default function Room({
   net,
@@ -27,12 +27,7 @@ export default function Room({
               <div key={i} className="room-slot">
                 {p ? (
                   <>
-                    <SkinImage
-                      skinKey={p.avatar}
-                      alt={p.username}
-                      className="avatar-img avatar-lg"
-                      fallback={<span className="avatar-emoji avatar-emoji-lg">{AVATAR_FALLBACKS[p.avatar] ?? '👤'}</span>}
-                    />
+                    <AvatarImage avatar={p.avatar} className="avatar-img avatar-lg" />
                     <div className="room-slot-name">
                       {p.username}
                       {i === 0 && <span className="tag waiting">房主</span>}

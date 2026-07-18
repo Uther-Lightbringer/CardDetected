@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WsClient } from '../net';
-import { AVATAR_FALLBACKS, AVATAR_KEYS, SkinImage } from '../skin';
+import { AvatarPicker } from '../avatar';
 
 export default function Login({ net, onBack }: { net: WsClient; onBack: () => void }): JSX.Element {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -44,17 +44,7 @@ export default function Login({ net, onBack }: { net: WsClient; onBack: () => vo
         {mode === 'register' && (
           <div className="form-row">
             <label>选择头像</label>
-            <div className="avatar-grid">
-              {AVATAR_KEYS.map((key) => (
-                <button
-                  key={key}
-                  className={avatar === key ? 'avatar-option selected' : 'avatar-option'}
-                  onClick={() => setAvatar(key)}
-                >
-                  <SkinImage skinKey={key} alt={key} className="avatar-img" fallback={<span className="avatar-emoji">{AVATAR_FALLBACKS[key]}</span>} />
-                </button>
-              ))}
-            </div>
+            <AvatarPicker value={avatar} onChange={setAvatar} />
           </div>
         )}
 
