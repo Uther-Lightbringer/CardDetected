@@ -1,7 +1,7 @@
 import {
   applyAction,
   botTurn,
-  buildStarterDeck,
+  buildDefaultDeck,
   CARDS,
   createGame,
   filterEventsFor,
@@ -39,6 +39,18 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 // ==================== 单人：本地规则引擎 + AI 对手 ====================
 
+/** 单人对局的可选配置：自定义牌组 / 固定种子 / 恢复快照 / 状态变更回调（持久化用） */
+export interface LocalGameOptions {
+  /** 玩家牌组（缺省用新手默认牌组），AI 始终用默认牌组 */
+  deck?: string[];
+  /** 随机种子；恢复对局时传入原种子 */
+  seed?: number;
+  /** 进行中的对局快照，提供时直接恢复而不再开新局 */
+  resume?: GameState;
+  /** 每次状态变更（含 AI 行动后）触发，用于把对局快照写回存档 */
+  onStateChange?: (state: GameState, seed: number) => void;
+}
+
 export class LocalAdapter implements BattleAdapter {
   readonly mySide: PlayerIndex = 0;
   private readonly aiSide: PlayerIndex = 1;
@@ -54,13 +66,18 @@ export class LocalAdapter implements BattleAdapter {
   private debugLog: LlmDebugRecord[] = [];
   /** AI 通过「现场勘查」侦测到的玩家手牌（情报记忆） */
   private aiIntel: AiIntel | null = null;
+  /** 本局随机种子（随快照一起保存，恢复时沿用） */
+  private readonly seed: number;
+  private readonly onStateChange?: (state: GameState, seed: number) => void;
 
   getLlmDebugLog(): LlmDebugRecord[] {
     return this.debugLog;
   }
 
-  constructor(private settings: Settings) {
-    this.state = createGame(buildStarterDeck(), buildStarterDeck(), Date.now() % 2147483647);
+  constructor(private settings: Settings, opts: LocalGameOptions = {}) {
+    this.seed = opts.seed ?? Date.now() % 2147483647;
+    this.state = opts.resume ?? createGame(opts.deck ?? buildDefaultDeck(), buildDefaultDeck(), this.seed);
+    this.onStateChange = opts.onStateChange;
   }
 
   /** 把事件压缩成战况摘要（供大模型短期记忆使用） */
@@ -102,6 +119,7 @@ export class LocalAdapter implements BattleAdapter {
     if (this.disposed) return;
     this.summarize(events);
     this.hooks.onUpdate(getView(this.state, this.mySide), filterEventsFor(events, this.mySide));
+    this.onStateChange?.(this.state, this.seed);
     if (this.state.winner !== null) {
       const w = this.state.winner;
       this.hooks.onGameOver(w, w === this.mySide ? '真相大白！你赢了' : '线索中断……AI 获胜');
@@ -213,6 +231,11 @@ export class RemoteAdapter implements BattleAdapter {
   refresh(): void {
     if (this.lastView) this.hooks.onUpdate(this.lastView, []);
     if (this.over) this.hooks.onGameOver(this.over.winner, this.over.reason);
+  }
+
+  /** 对局结果快照（多人战绩记录用）；未结束返回 null */
+  get result(): { winner: PlayerIndex; turns: number } | null {
+    return this.over ? { winner: this.over.winner, turns: this.lastView?.turn ?? 0 } : null;
   }
 
   act(action: GameAction): void {

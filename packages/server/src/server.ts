@@ -4,10 +4,11 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   applyAction,
-  buildStarterDeck,
+  buildDefaultDeck,
   createGame,
   filterEventsFor,
   getView,
+  validateDeck,
   type ClientMessage,
   type GameState,
   type PlayerIndex,
@@ -26,6 +27,8 @@ interface ClientConn {
   user: UserProfile | null;
   connectedAt: number;
   roomId: string | null;
+  /** 最近一次建房/加入时提交的牌组；缺省或非法时开局用默认牌组兜底 */
+  deck?: string[];
 }
 
 interface Room {
@@ -35,9 +38,19 @@ interface Room {
   players: ClientConn[]; // 最多 2 人，join 顺序即座位顺序
   state: 'waiting' | 'playing';
   game: GameState | null;
+  /** 本局随机种子（调试用，管理面板可见） */
+  seed?: number;
 }
 
 const AVATARS = new Set(Array.from({ length: 8 }, (_, i) => `avatar_${i + 1}`));
+
+/** 断线重连宽限：对局中掉线后保留座位的时间，超时判负 */
+export const RESUME_GRACE_MS = 60_000;
+/** 实际生效的宽限时长：环境变量 RESUME_GRACE_MS 可覆盖（测试用） */
+const resumeGraceMs = (): number => {
+  const v = Number(process.env.RESUME_GRACE_MS);
+  return Number.isFinite(v) && v > 0 ? v : RESUME_GRACE_MS;
+};
 
 // ==================== 服务器 ====================
 
@@ -52,6 +65,8 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
   const clients = new Set<ClientConn>();
   const rooms = new Map<string, Room>();
   const startedAt = Date.now();
+  /** 对局中掉线玩家的判负定时器：username → timer（resume 成功时清除） */
+  const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const app = express();
   const adminHtml = loadAdminHtml();
@@ -75,6 +90,7 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
         players: r.players.map((p) => p.user?.username ?? '?'),
         state: r.state,
         turn: r.game?.turn ?? null,
+        seed: r.seed ?? null,
       })),
     });
   });
@@ -142,9 +158,21 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
     });
   };
 
+  /** 取玩家开局牌组：未提交或非法时用默认牌组兜底（非法同时告知提交方） */
+  const deckOf = (p: ClientConn): string[] => {
+    if (!p.deck) return buildDefaultDeck();
+    const problem = validateDeck(p.deck);
+    if (problem) {
+      err(p.ws, 'bad_deck', `牌组不合法（${problem}），本局已改用默认牌组`);
+      return buildDefaultDeck();
+    }
+    return [...p.deck];
+  };
+
   const startGame = (room: Room): void => {
     room.state = 'playing';
-    room.game = createGame(buildStarterDeck(), buildStarterDeck(), Date.now() % 2147483647);
+    room.seed = Date.now() % 2147483647;
+    room.game = createGame(deckOf(room.players[0]), deckOf(room.players[1]), room.seed);
     room.players.forEach((p, i) => send(p.ws, { type: 'game_start', side: i as PlayerIndex }));
     broadcastGameViews(room, [{ type: 'game_start' }]);
     roomUpdate(room);
@@ -167,7 +195,9 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
       const msg = store.register(m.username ?? '', m.password ?? '', avatar);
       if (msg) return err(c.ws, 'register_fail', msg);
       c.user = { username: m.username, avatar };
-      send(c.ws, { type: 'auth_ok', user: c.user });
+      const token = randomBytes(16).toString('hex');
+      store.setToken(c.user.username, token);
+      send(c.ws, { type: 'auth_ok', user: c.user, token });
       send(c.ws, { type: 'rooms', rooms: [...rooms.values()].map(roomInfo) });
     },
     login(c, m) {
@@ -178,7 +208,44 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
         return err(c.ws, 'duplicate', '该账号已在其他地方登录');
       }
       c.user = user;
-      send(c.ws, { type: 'auth_ok', user });
+      const token = randomBytes(16).toString('hex');
+      store.setToken(user.username, token);
+      send(c.ws, { type: 'auth_ok', user, token });
+      send(c.ws, { type: 'rooms', rooms: [...rooms.values()].map(roomInfo) });
+    },
+    resume(c, m) {
+      // 断线重连：凭 token 恢复身份，不受重复登录拦截限制
+      if (c.user) return err(c.ws, 'already_auth', '你已登录');
+      const user = store.findByToken(m.token ?? '');
+      if (!user) return err(c.ws, 'bad_token', '会话已失效，请重新登录');
+      c.user = user;
+      send(c.ws, { type: 'auth_ok', user, token: m.token });
+      // 找回所在房间：把旧连接替换为新连接，恢复座位与对局
+      for (const room of rooms.values()) {
+        const idx = room.players.findIndex((p) => p.user?.username === user.username);
+        if (idx < 0) continue;
+        const old = room.players[idx];
+        if (old !== c) {
+          c.deck = old.deck;
+          room.players[idx] = c;
+          clients.delete(old);
+          old.roomId = null; // 防止旧连接的 close 事件误触发掉线判负
+          if (old.ws.readyState === WebSocket.OPEN) old.ws.close();
+        }
+        c.roomId = room.id;
+        const timer = offlineTimers.get(user.username);
+        if (timer) {
+          clearTimeout(timer);
+          offlineTimers.delete(user.username);
+        }
+        roomUpdate(room);
+        if (room.state === 'playing' && room.game) {
+          const side = idx as PlayerIndex;
+          send(c.ws, { type: 'game_state', view: getView(room.game, side), events: [] });
+        }
+        broadcastRooms();
+        return;
+      }
       send(c.ws, { type: 'rooms', rooms: [...rooms.values()].map(roomInfo) });
     },
     list_rooms(c) {
@@ -189,6 +256,7 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
       if (c.roomId) return err(c.ws, 'in_room', '你已在房间中');
       const name = (m.name ?? '').trim().slice(0, 20) || `${c.user.username} 的房间`;
       const id = randomBytes(3).toString('hex');
+      c.deck = m.deck;
       const room: Room = { id, name, host: c.user.username, players: [c], state: 'waiting', game: null };
       rooms.set(id, room);
       c.roomId = id;
@@ -201,6 +269,7 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
       const room = rooms.get(m.roomId);
       if (!room) return err(c.ws, 'no_room', '房间不存在');
       if (room.state !== 'waiting' || room.players.length >= 2) return err(c.ws, 'room_full', '房间已满或正在对局中');
+      c.deck = m.deck;
       room.players.push(c);
       c.roomId = room.id;
       roomUpdate(room);
@@ -252,7 +321,19 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
       }
     });
     ws.on('close', () => {
-      leaveRoom(conn);
+      const room = conn.roomId ? rooms.get(conn.roomId) : null;
+      if (room?.state === 'playing' && room.game && room.game.winner === null && conn.user) {
+        // 对局中掉线：保留座位等待 resume，宽限期满未归才判负
+        const username = conn.user.username;
+        const timer = setTimeout(() => {
+          offlineTimers.delete(username);
+          leaveRoom(conn); // leaveRoom 内含对局中离开的判负逻辑
+          broadcastRooms();
+        }, resumeGraceMs());
+        offlineTimers.set(username, timer);
+      } else {
+        leaveRoom(conn);
+      }
       clients.delete(conn);
       broadcastRooms();
     });

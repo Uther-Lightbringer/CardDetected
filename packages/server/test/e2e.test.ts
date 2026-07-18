@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
-import type { ClientMessage, GameView, RoomInfo, ServerMessage } from '@cardetect/shared';
+import { buildDefaultDeck, type ClientMessage, type GameView, type RoomInfo, type ServerMessage } from '@cardetect/shared';
 import { startServer } from '../src/server.js';
 
 process.env.NO_OPEN = '1';
@@ -14,6 +14,7 @@ const URL = `ws://127.0.0.1:${PORT}`;
 class TestClient {
   ws: WebSocket;
   user: string | null = null;
+  token: string | null = null;
   rooms: RoomInfo[] = [];
   room: RoomInfo | null = null;
   side: 0 | 1 | null = null;
@@ -29,7 +30,10 @@ class TestClient {
 
   private onMessage(m: ServerMessage): void {
     this.inbox.push(m);
-    if (m.type === 'auth_ok') this.user = m.user.username;
+    if (m.type === 'auth_ok') {
+      this.user = m.user.username;
+      this.token = m.token ?? null;
+    }
     if (m.type === 'rooms') this.rooms = m.rooms;
     if (m.type === 'room_update') this.room = m.room;
     if (m.type === 'game_start') this.side = m.side;
@@ -195,8 +199,79 @@ async function main(): Promise<void> {
   assert.ok(status.rooms.some((r) => r.name === '午夜谜案' && r.players.length === 2));
   console.log('  ✓ 管理面板 /api/status 数据正确');
 
+  // 9. 多人带牌组开局：合法牌组正常使用；非法牌组（19 张）报错并兜底默认牌组
+  const D = new TestClient('D');
+  const E = new TestClient('E');
+  await D.open();
+  await E.open();
+  D.send({ type: 'register', username: '侦探丙', password: 'pass1234', avatar: 'avatar_3' });
+  await D.waitFor('auth_ok');
+  E.send({ type: 'register', username: '侦探丁', password: 'pass1234', avatar: 'avatar_4' });
+  await E.waitFor('auth_ok');
+  assert.ok(D.token && E.token, 'auth_ok 应携带重连 token');
+  D.send({ type: 'create_room', name: '牌组测试', deck: buildDefaultDeck() });
+  await D.waitFor('room_update');
+  E.send({ type: 'join_room', roomId: D.room!.id, deck: buildDefaultDeck().slice(0, 19) });
+  await E.waitFor('room_update');
+  D.send({ type: 'start_game' });
+  const deckErr = (await E.waitFor('error')) as Extract<ServerMessage, { type: 'error' }>;
+  assert.equal(deckErr.code, 'bad_deck');
+  await D.waitFor('game_start');
+  await E.waitFor('game_start');
+  await D.waitFor('game_state');
+  await E.waitFor('game_state');
+  console.log('  ✓ 带牌组开局：非法牌组收到 bad_deck 并用默认牌组兜底，对局正常开始');
+
+  // 10. 对局中掉线 → 宽限内 resume 恢复身份与对局，可继续行动
+  E.close();
+  await sleep(300); // 等服务器处理 close（启动判负宽限定时器）
+  const E2 = new TestClient('E2');
+  await E2.open();
+  E2.send({ type: 'resume', token: E.token! });
+  await E2.waitFor('auth_ok');
+  await E2.waitFor('room_update');
+  await E2.waitFor('game_state');
+  assert.equal(E2.user, '侦探丁');
+  assert.equal(E2.room?.state, 'playing');
+  assert.ok(E2.view, '恢复后应收到对局视角');
+  // 轮流结束回合：验证恢复后的连接可以正常 game_action
+  D.send({ type: 'game_action', action: { type: 'end_turn' } });
+  await D.waitFor('game_state');
+  await E2.waitFor('game_state');
+  assert.equal(E2.view!.current, 1, '应轮到重连回来的玩家');
+  E2.send({ type: 'game_action', action: { type: 'end_turn' } });
+  await E2.waitFor('game_state');
+  await D.waitFor('game_state');
+  assert.equal(D.view!.current, 0);
+  console.log('  ✓ 断线重连：resume 恢复对局，game_action 正常');
+
+  // 11. 掉线超过宽限 → 判负（RESUME_GRACE_MS 用环境变量调小）
+  process.env.RESUME_GRACE_MS = '500';
+  const F = new TestClient('F');
+  const G = new TestClient('G');
+  await F.open();
+  await G.open();
+  F.send({ type: 'register', username: '侦探戊', password: 'pass1234', avatar: 'avatar_5' });
+  await F.waitFor('auth_ok');
+  G.send({ type: 'register', username: '侦探己', password: 'pass1234', avatar: 'avatar_6' });
+  await G.waitFor('auth_ok');
+  F.send({ type: 'create_room', name: '宽限测试', deck: buildDefaultDeck() });
+  await F.waitFor('room_update');
+  G.send({ type: 'join_room', roomId: F.room!.id });
+  await G.waitFor('room_update');
+  F.send({ type: 'start_game' });
+  await F.waitFor('game_start');
+  await G.waitFor('game_start');
+  G.close(); // 掉线且不再回来
+  const over = (await F.waitFor('game_over', 5000)) as Extract<ServerMessage, { type: 'game_over' }>;
+  assert.equal(over.winner, 0, '对手超时未归，留守方应获胜');
+  console.log('  ✓ 掉线超过宽限期判负（RESUME_GRACE_MS=500 覆盖）');
+
   A.close();
   B.close();
+  D.close();
+  E2.close();
+  F.close();
   server.close();
   clearTimeout(watchdog);
   console.log('\n端到端测试全部通过 ✅');

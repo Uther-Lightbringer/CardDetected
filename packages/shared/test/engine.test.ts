@@ -2,12 +2,15 @@ import assert from 'node:assert';
 import {
   applyAction,
   botTurn,
+  buildDefaultDeck,
   buildStarterDeck,
   CARDS,
   createGame,
+  deckFaction,
   filterEventsFor,
   getView,
   legalTargets,
+  validateDeck,
   type GameState,
   type PlayerState,
   type UnitState,
@@ -296,6 +299,21 @@ test('易容与 legalTargets 一致：self_ready 单位休整中也有合法目�
   // 普通单位休整中 → 无合法目标
   const r2 = ok(applyAction(r.state, 0, { type: 'play_card', handIndex: 0, row: 'front', slot: 1 }));
   assert.equal(legalTargets(r2.state, 0, { row: 'front', slot: 1 }).length, 0);
+});
+
+test('牌组校验：20 张限制、同名上限、单门派、衍生牌拦截', () => {
+  const legal = buildDefaultDeck();
+  assert.equal(validateDeck(legal), null);
+  assert.equal(deckFaction(legal), 'tieji');
+  assert.ok(validateDeck(legal.slice(0, 19))?.includes('20 张'), '少一张应报错');
+  assert.ok(validateDeck([...legal, 'sniper'])?.includes('20 张'), '多一张应报错');
+  const base = legal.filter((c) => c !== 'sniper' && c !== 'rookie_detective'); // 16 张
+  assert.ok(validateDeck([...base, 'sniper', 'sniper', 'sniper', 'rookie_detective'])?.includes('最多带 2 张'));
+  const mixed = legal.map((c) => (c === 'swat_captain' ? 'gu_powder' : c)); // 铁脊+五毒混门派
+  assert.ok(validateDeck(mixed)?.includes('一个门派'));
+  const withToken = [...legal.slice(0, 19), 'gu_slave'];
+  assert.ok(validateDeck(withToken)?.includes('衍生牌'));
+  assert.equal(deckFaction(legal.filter((c) => !CARDS[c]?.faction)), null, '全中立牌组无门派');
 });
 
 test('机器人对打：能完整打完一局并分出胜负', () => {

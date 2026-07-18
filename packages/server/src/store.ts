@@ -8,6 +8,8 @@ interface StoredUser {
   hash: string;
   avatar: string;
   createdAt: string;
+  /** 断线重连令牌（每次登录/注册重新签发） */
+  token?: string;
 }
 
 /** 极简账号存储：JSON 文件持久化，scrypt 加盐哈希密码。 */
@@ -54,5 +56,22 @@ export class UserStore {
   get(username: string): UserProfile | null {
     const u = this.users.get(username);
     return u ? { username, avatar: u.avatar } : null;
+  }
+
+  /** 登录/注册成功后签发重连令牌（覆盖旧令牌并落盘） */
+  setToken(username: string, token: string): void {
+    const u = this.users.get(username);
+    if (!u) return;
+    u.token = token;
+    this.save();
+  }
+
+  /** 按重连令牌找回用户（resume 用） */
+  findByToken(token: string): UserProfile | null {
+    if (!token) return null;
+    for (const [username, u] of this.users) {
+      if (u.token && u.token === token) return { username, avatar: u.avatar };
+    }
+    return null;
   }
 }

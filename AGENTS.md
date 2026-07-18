@@ -11,9 +11,11 @@
   - `src/data/cards.json`：卡牌数据（新增卡牌只改这里）；`src/cards.ts` 负责加载+启动校验并导出 `CARDS`。
   - `src/engine.ts`：规则引擎，纯函数式 `applyAction(state, side, action)` 返回新 state+events；原子效果走 `EFFECT_HANDLERS` 注册表（新效果=types.ts 加一种 EffectAction + 注册处理器，不改引擎主干）；`getView`/`filterEventsFor` 负责信息隐藏。战场为前锋 6 格 + 后营 3 格（FRONT_SLOTS/BACK_SLOTS）。
   - `src/ai.ts`：内置机器人 `botTurn`。
-- `packages/server` — Node + express + ws，`tsx` 直接运行 TS。账号存 `data/users.json`（scrypt 哈希，scryptSync 第三参 keylen 必填）。管理面板 `public/admin.html` 轮询 `/api/status`。
+  - `src/deck.ts`：牌组规则（20 张/同名≤2/单门派+中立）+ `validateDeck`（客户端组牌器与服务器开局校验共用）+ `buildDefaultDeck`。
+- `packages/server` — Node + express + ws，`tsx` 直接运行 TS。账号存 `data/users.json`（scrypt 哈希，scryptSync 第三参 keylen 必填；登录签发 token 供断线重连 `resume`，对局中掉线宽限 `RESUME_GRACE_MS`=60s 可用同名环境变量覆盖）。管理面板 `public/admin.html` 轮询 `/api/status`。
 - `packages/client` — React 18 + Vite。无路由库，`App.tsx` 用 useState 状态机切屏。
-  - `src/game/adapter.ts`：Battle 数据源抽象，单人（LocalAdapter，本地引擎+AI）与多人（RemoteAdapter，WS）实现同一接口。
+  - `src/game/adapter.ts`：Battle 数据源抽象，单人（LocalAdapter，本地引擎+AI）与多人（RemoteAdapter，WS）实现同一接口。LocalAdapter 支持牌组注入与 `resume` 快照恢复，每次状态变更回调 `onStateChange` 供持久化。
+  - `src/saves.ts`：单人本地存档 CRUD（localStorage `cardetect_saves`；另有 `cardetect_last_save`/`cardetect_session`）；`src/views/Saves.tsx` 存档选择/主页/战绩，`src/views/DeckBuilder.tsx` 组牌器。
   - `src/skin.tsx` + `public/assets/skins/default/manifest.json`：皮肤系统，所有图片按 key 引用，缺失自动降级占位，禁止硬编码图片路径。
 
 ## 命令

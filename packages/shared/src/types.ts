@@ -183,14 +183,15 @@ export type ClientMessage =
   | { type: 'register'; username: string; password: string; avatar: string }
   | { type: 'login'; username: string; password: string }
   | { type: 'list_rooms' }
-  | { type: 'create_room'; name: string }
-  | { type: 'join_room'; roomId: string }
+  | { type: 'create_room'; name: string; deck?: string[] } // deck 缺省/非法时服务器用默认牌组兜底
+  | { type: 'join_room'; roomId: string; deck?: string[] }
   | { type: 'leave_room' }
   | { type: 'start_game' }
+  | { type: 'resume'; token: string } // 断线重连：恢复身份与对局
   | { type: 'game_action'; action: GameAction };
 
 export type ServerMessage =
-  | { type: 'auth_ok'; user: UserProfile }
+  | { type: 'auth_ok'; user: UserProfile; token?: string } // token 用于断线重连
   | { type: 'error'; code: string; message: string }
   | { type: 'rooms'; rooms: RoomInfo[] }
   | { type: 'room_update'; room: RoomInfo | null }

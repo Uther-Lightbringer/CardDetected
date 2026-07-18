@@ -355,3 +355,95 @@ input:focus, select:focus { border-color: var(--amber); }
 .farewell-card { text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .farewell-card h1 { color: var(--amber); letter-spacing: 4px; }
 .farewell-card p { color: var(--dim); }
+
+/* ---------- 单人存档 ---------- */
+.save-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.save-item {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 16px; cursor: pointer; text-align: left; color: var(--text);
+}
+.save-item:hover { border-color: var(--amber); }
+.save-item-info { flex: 1; min-width: 0; }
+.save-item-name { font-size: 15px; font-weight: bold; display: flex; gap: 8px; align-items: center; }
+.save-item-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.save-del { flex-shrink: 0; }
+.save-new { border-top: 1px solid var(--border); padding-top: 16px; }
+.save-home-info { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+.save-home-buttons { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.btn-sub { display: block; font-size: 11px; font-weight: normal; letter-spacing: 0; opacity: .8; margin-top: 2px; }
+.history-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.history-item {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; color: var(--dim);
+}
+.history-item .win { color: var(--green); font-weight: bold; }
+.history-item .lose { color: var(--red); font-weight: bold; }
+
+/* ---------- 组牌器 ---------- */
+.deckbuilder { height: 100%; display: flex; flex-direction: column; padding: 16px 24px; gap: 12px; overflow: hidden; }
+.deckbuilder-top { display: flex; align-items: center; justify-content: space-between; }
+.deckbuilder-top .page-title { margin-bottom: 0; }
+.deck-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.deck-tab {
+  padding: 8px 16px; background: var(--bg); border: 1px solid var(--border);
+  color: var(--dim); border-radius: 8px; font-size: 14px;
+}
+.deck-tab.active { border-color: var(--amber); color: var(--amber); }
+.deck-tab .default-star { color: var(--amber); }
+.deck-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.deck-actions input { width: 200px; }
+.deck-columns { flex: 1; display: flex; gap: 16px; min-height: 0; }
+.deck-panel, .pool-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; display: flex; flex-direction: column; min-height: 0;
+}
+.deck-panel { width: 320px; flex-shrink: 0; }
+.pool-panel { flex: 1; min-width: 0; }
+.deck-panel h3, .pool-panel h3 { font-size: 14px; color: #9fb4d8; margin-bottom: 10px; }
+.deck-rows, .pool-groups { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.deck-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; color: var(--text); font-size: 13px; text-align: left;
+}
+.deck-row:hover { border-color: var(--red); }
+.deck-row-name { flex: 1; }
+.deck-row-count { color: var(--amber); font-weight: bold; }
+.deck-status {
+  display: flex; gap: 10px; align-items: center;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px;
+}
+.deck-count { font-weight: bold; }
+.deck-count.ok { color: var(--green); }
+.deck-count.bad { color: var(--red); }
+.deck-ok { color: var(--green); }
+.deck-err { color: var(--red); }
+.pool-group-title { color: var(--blue); font-size: 13px; margin: 8px 0 2px; cursor: help; }
+.pool-card {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; text-align: left; color: var(--text);
+}
+.pool-card:hover:not(.disabled) { border-color: var(--amber); }
+.pool-card.disabled { opacity: .45; cursor: not-allowed; }
+.pool-cost {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--blue); color: #fff; font-weight: bold; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.pool-main { flex: 1; min-width: 0; }
+.pool-name { font-size: 13px; font-weight: bold; display: flex; gap: 6px; align-items: center; }
+.pool-kind { font-size: 10px; color: var(--dim); font-weight: normal; }
+.pool-desc { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; line-height: 1.4; }
+.pool-kws { justify-content: flex-start; }
+.pool-stats { flex-shrink: 0; font-size: 13px; }
+
+/* 窄屏时组牌器改为上下两区 */
+@media (max-width: 900px) {
+  .deckbuilder { overflow-y: auto; }
+  .deck-columns { flex-direction: column; overflow: visible; }
+  .deck-panel { width: 100%; }
+  .deck-rows, .pool-groups { overflow: visible; }
+}

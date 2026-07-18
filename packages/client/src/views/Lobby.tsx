@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import type { RoomInfo } from '@cardetect/shared';
 import type { WsClient } from '../net';
+import { defaultDeck, lastSave } from '../saves';
 import { AVATAR_FALLBACKS, SkinImage } from '../skin';
+
+/** 多人建房/加入时附带的牌组：最近使用存档的默认牌组；无存档则不带（服务器兜底） */
+function myDeck(): string[] | undefined {
+  const save = lastSave();
+  return save ? defaultDeck(save).cards : undefined;
+}
 
 export default function Lobby({
   net,
@@ -26,7 +33,7 @@ export default function Lobby({
             placeholder="房间名（可留空）"
             maxLength={20}
           />
-          <button className="btn" onClick={() => net.send({ type: 'create_room', name: roomName })}>建立房间</button>
+          <button className="btn" onClick={() => net.send({ type: 'create_room', name: roomName, deck: myDeck() })}>建立房间</button>
           <button className="btn btn-ghost" onClick={() => net.send({ type: 'list_rooms' })}>刷新</button>
         </div>
 
@@ -58,7 +65,7 @@ export default function Lobby({
                 <button
                   className="btn btn-small"
                   disabled={r.state === 'playing' || r.players.length >= 2}
-                  onClick={() => net.send({ type: 'join_room', roomId: r.id })}
+                  onClick={() => net.send({ type: 'join_room', roomId: r.id, deck: myDeck() })}
                 >
                   加入
                 </button>
