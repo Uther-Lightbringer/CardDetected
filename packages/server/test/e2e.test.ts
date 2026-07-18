@@ -249,7 +249,7 @@ async function main(): Promise<void> {
       const auth = req.headers.authorization;
       assert.equal(auth, 'Bearer sk-test-key-123456', '代理应携带配置的 key');
       const parsed = JSON.parse(body) as { model: string; messages: unknown[] };
-      assert.equal(parsed.model, 'deepseek-chat');
+      assert.equal(parsed.model, 'deepseek-v4-flash');
       assert.ok(Array.isArray(parsed.messages));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message: { content: '{"actions":[{"type":"end_turn"}]}' } }] }));
@@ -279,6 +279,22 @@ async function main(): Promise<void> {
     body: JSON.stringify({ messages: [] }),
   });
   assert.equal(badChat.status, 400, '空 messages 应 400');
+  // AI 测试接口：不传参用已保存的配置（指向本地桩）应成功；指向死端口应失败但不炸服
+  const aiTest = await (await fetch(`http://127.0.0.1:${PORT}/api/admin/ai-test`, {
+    method: 'POST',
+    headers: { ...adminHead, 'Content-Type': 'application/json' },
+    body: '{}',
+  })).json() as { ok: boolean; model?: string; latencyMs?: number; reply?: string };
+  assert.ok(aiTest.ok, 'ai-test 应成功');
+  assert.equal(aiTest.model, 'deepseek-v4-flash', '默认模型应为 deepseek-v4-flash');
+  assert.ok(typeof aiTest.latencyMs === 'number' && aiTest.reply?.includes('end_turn'));
+  const aiTestFail = await (await fetch(`http://127.0.0.1:${PORT}/api/admin/ai-test`, {
+    method: 'POST',
+    headers: { ...adminHead, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ baseUrl: 'http://127.0.0.1:1' }),
+  })).json() as { ok: boolean; error?: string };
+  assert.equal(aiTestFail.ok, false, '连不上上游应 ok:false');
+  assert.ok(aiTestFail.error);
   stub.close();
   console.log('  ✓ /api/ai/chat 代理（限流/校验/透传）正确');
 

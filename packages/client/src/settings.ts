@@ -23,7 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   serverPort: 9000,
   aiProvider: 'builtin',
   deepseekKey: '',
-  deepseekModel: 'deepseek-chat',
+  deepseekModel: 'deepseek-v4-flash',
 };
 
 export function loadSettings(): Settings {

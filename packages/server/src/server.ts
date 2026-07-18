@@ -143,6 +143,32 @@ export function startServer({ port, dataDir }: GameServerOptions): Server {
     res.json(aiStore.view());
   });
 
+  // 测试 AI 配置是否可用：用表单里的值（可未保存）发一条最小请求，返回耗时与模型回复
+  app.post('/api/admin/ai-test', adminAuth, async (req, res) => {
+    const b = (req.body ?? {}) as { model?: unknown; baseUrl?: unknown; apiKey?: unknown };
+    const saved = aiStore.get();
+    const cfg = {
+      ...saved,
+      model: typeof b.model === 'string' && b.model.trim() ? b.model.trim() : saved.model,
+      baseUrl: typeof b.baseUrl === 'string' && /^https?:\/\//.test(b.baseUrl) ? b.baseUrl.trim() : saved.baseUrl,
+      apiKey: typeof b.apiKey === 'string' && b.apiKey.trim() ? b.apiKey.trim() : saved.apiKey,
+    };
+    if (!cfg.apiKey) {
+      return res.json({ ok: false, error: '没有可用的 API Key（请先填写或保存）' });
+    }
+    const startedAt = Date.now();
+    try {
+      const reply = await chatCompletion(
+        cfg,
+        [{ role: 'user', content: '只回复两个字：正常' }],
+        { maxTokens: 16, timeoutMs: 20_000 },
+      );
+      res.json({ ok: true, model: cfg.model, latencyMs: Date.now() - startedAt, reply: reply.slice(0, 100) });
+    } catch (e) {
+      res.json({ ok: false, error: e instanceof Error ? e.message : '调用失败', latencyMs: Date.now() - startedAt });
+    }
+  });
+
   // ---------- AI 聊天代理（游戏客户端用，无需登录，按 IP 限流防刷额度） ----------
   const aiRatePerMin = Number(process.env.AI_RATE_PER_MIN ?? 20) || 20;
   const aiHits = new Map<string, number[]>();

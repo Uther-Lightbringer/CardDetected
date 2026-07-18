@@ -24,7 +24,7 @@ export interface AiConfig {
 const DEFAULT_CONFIG: AiConfig = {
   provider: 'deepseek',
   apiKey: '',
-  model: 'deepseek-chat',
+  model: 'deepseek-v4-flash',
   baseUrl: 'https://api.deepseek.com',
   enabled: true,
 };
@@ -71,7 +71,7 @@ export class AiConfigStore {
 export async function chatCompletion(
   cfg: AiConfig,
   messages: ChatMessage[],
-  opts: { responseFormat?: 'json' | 'text'; temperature?: number; timeoutMs?: number } = {},
+  opts: { responseFormat?: 'json' | 'text'; temperature?: number; timeoutMs?: number; maxTokens?: number } = {},
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
@@ -84,7 +84,7 @@ export async function chatCompletion(
       body: JSON.stringify({
         model: cfg.model,
         temperature: opts.temperature ?? 0.2,
-        max_tokens: 2048,
+        max_tokens: opts.maxTokens ?? 2048,
         ...(opts.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
         messages,
       }),

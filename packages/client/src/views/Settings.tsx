@@ -89,7 +89,7 @@ export default function SettingsView({
                 <input
                   value={form.deepseekModel}
                   onChange={(e) => set('deepseekModel', e.target.value.trim())}
-                  placeholder="deepseek-chat"
+                  placeholder="deepseek-v4-flash"
                 />
               </div>
               <p className="settings-hint">Key 仅保存在你自己的浏览器本地。大模型出错时会自动用内置机器人兜底。</p>

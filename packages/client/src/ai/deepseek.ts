@@ -307,7 +307,7 @@ export async function requestDeepseekTurn(
               Authorization: `Bearer ${endpoint.apiKey}`,
             },
             body: JSON.stringify({
-              model: endpoint.model || 'deepseek-chat',
+              model: endpoint.model || 'deepseek-v4-flash',
               temperature: 0.2,
               response_format: { type: 'json_object' }, // 强制合法 JSON
               messages,

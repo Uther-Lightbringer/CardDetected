@@ -47,6 +47,8 @@
       background: #e8b34b; color: #12141a; font-weight: bold;
     }
     .btn:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: #e8b34b; border: 1px solid #e8b34b; margin-left: 10px; }
+    .btn:disabled { opacity: 0.5; cursor: wait; }
     .form-msg { font-size: 12px; margin-top: 10px; min-height: 16px; }
     .form-msg.ok { color: #4bd8a2; }
     .form-msg.fail { color: #e86b6b; }
@@ -100,6 +102,7 @@
         <label class="inline"><input type="checkbox" id="aiEnabled" /> 启用 AI 代理（停用时客户端单人模式回落内置机器人）</label>
       </div>
       <button class="btn" id="aiSave">保存配置</button>
+      <button class="btn btn-ghost" id="aiTest">测试连接</button>
       <div class="form-msg" id="aiMsg"></div>
     </div>
   </section>
@@ -145,6 +148,37 @@
       }
     }
     // ---------- AI 配置 ----------
+    function aiFormBody() {
+      return {
+        model: document.getElementById('aiModel').value,
+        baseUrl: document.getElementById('aiBaseUrl').value,
+        apiKey: document.getElementById('aiKey').value,
+      };
+    }
+    const aiMsg = (cls, text) => {
+      const msg = document.getElementById('aiMsg');
+      msg.className = `form-msg ${cls}`;
+      msg.textContent = text;
+    };
+    document.getElementById('aiTest').addEventListener('click', async () => {
+      const btn = document.getElementById('aiTest');
+      btn.disabled = true;
+      aiMsg('', '测试进行中…');
+      try {
+        const res = await fetch('/api/admin/ai-test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(aiFormBody()),
+        });
+        const r = await res.json();
+        if (r.ok) aiMsg('ok', `✓ 连接成功（${r.model}，耗时 ${r.latencyMs}ms），模型回复：${r.reply}`);
+        else aiMsg('fail', `✗ 测试失败：${r.error}`);
+      } catch (e) {
+        aiMsg('fail', `✗ 请求失败：${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
     async function loadAiConfig() {
       try {
         const res = await fetch('/api/admin/ai-config');
@@ -179,8 +213,7 @@
         document.getElementById('aiClearKey').checked = false;
         loadAiConfig();
       } catch (e) {
-        msg.className = 'form-msg fail';
-        msg.textContent = `保存失败：${e.message}`;
+        aiMsg('fail', `保存失败：${e.message}`);
       }
     });
 
