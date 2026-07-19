@@ -81,7 +81,17 @@ export default function App(): JSX.Element {
   // ---------- Hash 路由同步 ----------
   useEffect(() => {
     const target = SCREEN_TO_HASH[screen];
-    if (location.hash !== target) history.replaceState(null, '', target);
+    if (location.hash !== target) history.pushState(null, '', target);
+  }, [screen]);
+
+  // 监听浏览器前进/后退按钮
+  useEffect(() => {
+    const onHashChange = () => {
+      const s = parseHash();
+      if (s !== screen) setScreen(s);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, [screen]);
 
   const toast = useCallback((msg: string) => {
@@ -505,7 +515,12 @@ export default function App(): JSX.Element {
       )}
       {!connecting && screen === 'login' && net && <Login net={net} onBack={() => { cleanupNet(); setScreen('menu'); }} />}
       {!connecting && screen === 'lobby' && net && user && (
-        <Lobby net={net} rooms={rooms} onLogout={() => { localStorage.removeItem(SESSION_KEY); cleanupNet(); setScreen('menu'); }} />
+        <Lobby
+          net={net}
+          rooms={rooms}
+          onBack={() => setScreen('menu')}
+          onLogout={() => { localStorage.removeItem(SESSION_KEY); cleanupNet(); setScreen('menu'); }}
+        />
       )}
       {!connecting && screen === 'room' && net && room && (
         <Room

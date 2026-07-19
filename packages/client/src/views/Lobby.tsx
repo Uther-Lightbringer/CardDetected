@@ -13,10 +13,12 @@ function myDeck(): string[] | undefined {
 export default function Lobby({
   net,
   rooms,
+  onBack,
   onLogout,
 }: {
   net: WsClient;
   rooms: RoomInfo[];
+  onBack: () => void;
   onLogout: () => void;
 }): JSX.Element {
   const [roomName, setRoomName] = useState('');
@@ -70,6 +72,7 @@ export default function Lobby({
         </div>
 
         <div className="form-actions">
+          <button className="btn btn-ghost" onClick={onBack}>? ??</button>
           <button className="btn btn-ghost" onClick={onLogout}>退出登录</button>
         </div>
       </div>
