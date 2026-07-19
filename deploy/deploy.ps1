@@ -1,4 +1,4 @@
-﻿# 一键部署到云服务器（Windows PowerShell 版）
+# 一键部署到云服务器（Windows PowerShell 版）
 # 用法：npm run deploy
 #       $env:DEPLOY_HOST='xxx'; $env:DEPLOY_DIR='/opt/xx'; npm run deploy
 param()
@@ -22,14 +22,14 @@ if ($LASTEXITCODE -ne 0) { throw "git archive 失败" }
 Write-Host "   包大小: $([math]::Round((Get-Item $archive).Length / 1KB)) KB"
 
 try {
-    # 上传
+    # 上传（用绝对路径避免 ~ 展开问题）
     Write-Host "== 传输到 ${REMOTE}:~/$DIR =="
-    scp $archive "${REMOTE}:cardetect-deploy.tar.gz"
+    scp $archive "${REMOTE}:/root/carddetect-deploy.tar.gz"
     if ($LASTEXITCODE -ne 0) { throw "scp 上传失败" }
 
-    # 远端解压 + 构建
+    # 远端解压 + 构建（单引号防止 PowerShell 展开变量）
     Write-Host "== 远端构建并重启容器 =="
-    ssh $REMOTE "mkdir -p ~/$DIR && cd ~ && tar -xzf carddetect-deploy.tar.gz -C $DIR && rm carddetect-deploy.tar.gz && cd $DIR && docker compose up -d --build"
+    ssh $REMOTE "mkdir -p /root/$DIR && tar -xzf /root/carddetect-deploy.tar.gz -C /root/$DIR && rm /root/carddetect-deploy.tar.gz && cd /root/$DIR && docker compose down && docker compose up -d --build"
     if ($LASTEXITCODE -ne 0) { throw "远端构建失败" }
 
     Write-Host "== 完成 ==" -ForegroundColor Green
