@@ -3,16 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": ["packages/*"],
   "scripts": {
     "dev:server": "npm run dev -w @cardetect/server",
     "dev:client": "npm run dev -w @cardetect/client",
     "build": "npm run build -w @cardetect/client",
     "dist:client": "npm run dist -w @cardetect/client",
     "dist:server": "npm run dist -w @cardetect/server",
-    "deploy": "bash deploy/deploy.sh",
+    "deploy": "powershell -ExecutionPolicy Bypass -File deploy/deploy.ps1",
     "test": "npm run test -w @cardetect/shared && npm run test -w @cardetect/server && npm run test -w @cardetect/client",
     "typecheck": "npm run typecheck -w @cardetect/shared && npm run typecheck -w @cardetect/server && npm run typecheck -w @cardetect/client"
   },

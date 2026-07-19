@@ -15,6 +15,26 @@ import DeckBuilder from './views/DeckBuilder';
 
 type Screen = 'menu' | 'settings' | 'login' | 'lobby' | 'room' | 'battle' | 'saves' | 'decks';
 
+// ---------- Hash 路由 ----------
+const SCREEN_TO_HASH: Record<Screen, string> = {
+  menu: '#/',
+  saves: '#/saves',
+  decks: '#/decks',
+  settings: '#/settings',
+  login: '#/login',
+  lobby: '#/lobby',
+  room: '#/room',
+  battle: '#/battle',
+};
+
+const HASH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
+  Object.entries(SCREEN_TO_HASH).map(([k, v]) => [v, k]),
+) as Record<string, Screen>;
+
+function parseHash(): Screen {
+  return HASH_TO_SCREEN[location.hash] ?? 'menu';
+}
+
 /** 断线重连会话 token 的 localStorage key */
 const SESSION_KEY = 'cardetect_session';
 /** 重连尝试的总时长（与服务器 RESUME_GRACE_MS 宽限对应） */
@@ -31,7 +51,7 @@ export interface BattleSession {
 }
 
 export default function App(): JSX.Element {
-  const [screen, setScreen] = useState<Screen>('menu');
+  const [screen, setScreen] = useState<Screen>(parseHash);
   const [settings, setSettings] = useState<Settings>(loadSettings());
   const [net, setNet] = useState<WsClient | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -41,6 +61,8 @@ export default function App(): JSX.Element {
   const [currentSave, setCurrentSave] = useState<SaveProfile | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [exited, setExited] = useState(false);
+  /** 页面加载时自动恢复登录中（显示加载指示） */
+  const [connecting, setConnecting] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 当前单人局的上下文：记战绩/清快照用（lastState 由 onStateChange 持续更新） */
   const singleCtxRef = useRef<{ saveId: string; deckName: string; oppName: string; lastState: GameState | null } | null>(null);
@@ -55,6 +77,12 @@ export default function App(): JSX.Element {
   userRef.current = user;
   const battleRef = useRef(battle);
   battleRef.current = battle;
+
+  // ---------- Hash 路由同步 ----------
+  useEffect(() => {
+    const target = SCREEN_TO_HASH[screen];
+    if (location.hash !== target) history.replaceState(null, '', target);
+  }, [screen]);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -139,6 +167,7 @@ export default function App(): JSX.Element {
         setUser(m.user);
         userRef.current = m.user;
         if (m.token) localStorage.setItem(SESSION_KEY, m.token);
+        setConnecting(false);
         if (resumePendingRef.current) {
           // resume 成功：等待随后的 room_update（在房间/对局中）或 rooms（无房间）落位
           toast('重连成功');
@@ -193,6 +222,9 @@ export default function App(): JSX.Element {
       });
       client.on('error', (m) => {
         if (m.code === 'bad_token' && resumePendingRef.current) {
+          resumePendingRef.current = false;
+          setConnecting(false);
+          localStorage.removeItem(SESSION_KEY);
           giveUpReconnect('会话已失效，请重新登录');
           return;
         }
@@ -216,6 +248,53 @@ export default function App(): JSX.Element {
     },
     [toast, giveUpReconnect],
   );
+
+  // ---------- 页面加载时自动恢复登录 ----------
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const attachRef = useRef(attachNetListeners);
+  attachRef.current = attachNetListeners;
+
+  useEffect(() => {
+    const initialScreen = parseHash();
+    const needsConnection = initialScreen === 'login' || initialScreen === 'lobby' || initialScreen === 'room' || initialScreen === 'battle';
+    if (!needsConnection) return;
+
+    const token = localStorage.getItem(SESSION_KEY);
+    let cancelled = false;
+
+    setConnecting(true);
+    (async () => {
+      try {
+        const client = await WsClient.connect(serverUrl(settingsRef.current));
+        if (cancelled) { client.close(); return; }
+        attachRef.current(client);
+        setNet(client);
+
+        if (token) {
+          // 有 token：自动 resume 恢复登录态
+          resumePendingRef.current = true;
+          client.send({ type: 'resume', token });
+        } else if (initialScreen === 'login') {
+          // 无 token 但在登录页：连接已就绪，等用户手动登录
+          setConnecting(false);
+        } else {
+          // 无 token 且目标需要登录：跳到登录页
+          setConnecting(false);
+          setScreen('login');
+        }
+      } catch {
+        if (!cancelled) {
+          setConnecting(false);
+          localStorage.removeItem(SESSION_KEY);
+          setScreen('menu');
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 断线重连：每 3 秒重试，连上后发 resume；60 秒内未恢复则放弃 */
   const reconnectLoop = useCallback(
@@ -249,6 +328,28 @@ export default function App(): JSX.Element {
       setScreen('settings');
       return;
     }
+    // 已有连接且已登录：直接进大厅
+    if (net && user) {
+      setScreen('lobby');
+      return;
+    }
+    // 有 token 但无连接：尝试自动恢复
+    const token = localStorage.getItem(SESSION_KEY);
+    if (token) {
+      setConnecting(true);
+      try {
+        const client = await WsClient.connect(serverUrl(settings));
+        attachNetListeners(client);
+        setNet(client);
+        resumePendingRef.current = true;
+        client.send({ type: 'resume', token });
+        return;
+      } catch {
+        setConnecting(false);
+        localStorage.removeItem(SESSION_KEY);
+        // 连接失败，继续走手动登录流程
+      }
+    }
     try {
       const client = await WsClient.connect(serverUrl(settings));
       attachNetListeners(client);
@@ -258,7 +359,7 @@ export default function App(): JSX.Element {
       toast(CLOUD_MODE ? '无法连接游戏服务器，请稍后再试' : `无法连接服务器 ${settings.serverHost}:${settings.serverPort}，请检查设置或联系服主`);
       if (!CLOUD_MODE) setScreen('settings');
     }
-  }, [settings, toast, attachNetListeners]);
+  }, [settings, toast, attachNetListeners, net, user]);
 
   // 断线处理：房间/对局中持有 token 则尝试重连；否则回主菜单（单人局不受服务器断线影响）
   useEffect(() => {
@@ -356,7 +457,15 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      {screen === 'menu' && (
+      {connecting && (
+        <div className="page">
+          <div className="page-card" style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 24, margin: '1rem 0' }}>⏳</p>
+            <p>正在恢复连接…</p>
+          </div>
+        </div>
+      )}
+      {!connecting && screen === 'menu' && (
         <Menu
           onSingle={() => setScreen('saves')}
           onMulti={handleMultiplayer}
@@ -364,7 +473,7 @@ export default function App(): JSX.Element {
           onExit={handleExitGame}
         />
       )}
-      {screen === 'saves' && (
+      {!connecting && screen === 'saves' && (
         <Saves
           currentSave={currentSave}
           onSelect={setCurrentSave}
@@ -374,7 +483,7 @@ export default function App(): JSX.Element {
           toast={toast}
         />
       )}
-      {screen === 'decks' && currentSave && (
+      {!connecting && screen === 'decks' && currentSave && (
         <DeckBuilder
           save={currentSave}
           onChange={(save) => setCurrentSave({ ...save })}
@@ -382,7 +491,7 @@ export default function App(): JSX.Element {
           toast={toast}
         />
       )}
-      {screen === 'settings' && (
+      {!connecting && screen === 'settings' && (
         <SettingsView
           settings={settings}
           onSave={(s) => {
@@ -394,11 +503,11 @@ export default function App(): JSX.Element {
           toast={toast}
         />
       )}
-      {screen === 'login' && net && <Login net={net} onBack={() => { cleanupNet(); setScreen('menu'); }} />}
-      {screen === 'lobby' && net && user && (
-        <Lobby net={net} rooms={rooms} onLogout={() => { cleanupNet(); setScreen('menu'); }} />
+      {!connecting && screen === 'login' && net && <Login net={net} onBack={() => { cleanupNet(); setScreen('menu'); }} />}
+      {!connecting && screen === 'lobby' && net && user && (
+        <Lobby net={net} rooms={rooms} onLogout={() => { localStorage.removeItem(SESSION_KEY); cleanupNet(); setScreen('menu'); }} />
       )}
-      {screen === 'room' && net && room && (
+      {!connecting && screen === 'room' && net && room && (
         <Room
           net={net}
           room={room}
@@ -406,7 +515,7 @@ export default function App(): JSX.Element {
           onLeave={() => net.send({ type: 'leave_room' })}
         />
       )}
-      {screen === 'battle' && battle && <Battle session={battle} onExit={exitBattle} toast={toast} />}
+      {!connecting && screen === 'battle' && battle && <Battle session={battle} onExit={exitBattle} toast={toast} />}
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </div>
   );

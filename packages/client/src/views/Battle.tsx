@@ -470,7 +470,7 @@ export default function Battle({
     return (
       <div
         key={`${cardId}-${i}`}
-        className={`hand-card ${affordable ? '' : 'disabled'} ${selected ? 'selected' : ''}`}
+        className={`hand-card ${def.faction ? `faction-${def.faction}` : 'faction-neutral'} kind-${def.kind} ${affordable ? '' : 'disabled'} ${selected ? 'selected' : ''}`}
         onClick={() => clickHandCard(i)}
         title={def.desc}
       >

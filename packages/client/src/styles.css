@@ -174,7 +174,11 @@ input:focus, select:focus { border-color: var(--amber); }
 .slot-hint { color: var(--green); font-size: 11px; }
 .slot.unit.targetable { border-color: var(--red); box-shadow: 0 0 12px rgba(224,92,92,.5); cursor: crosshair; }
 .slot.unit.selected { border-color: var(--blue); box-shadow: 0 0 12px rgba(92,157,224,.6); }
-.slot.unit.ready { border-color: #3a5a45; }
+.slot.unit.ready { border-color: rgba(75,216,162,.4); animation: ready-breathe 2.2s ease-in-out infinite; }
+@keyframes ready-breathe {
+  0%, 100% { box-shadow: 0 0 4px rgba(75,216,162,.15); }
+  50% { box-shadow: 0 0 12px rgba(75,216,162,.35); }
+}
 .slot.unit.ready:hover { border-color: var(--green); box-shadow: 0 0 10px rgba(75,216,162,.4); cursor: pointer; }
 .slot.unit.idle { opacity: .72; }
 .unit-art { width: 40px; height: 40px; border-radius: 8px; }
@@ -183,7 +187,12 @@ input:focus, select:focus { border-color: var(--amber); }
 .unit-kws { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
 .kw { font-size: 10px; background: var(--panel2); color: var(--amber); border-radius: 4px; padding: 0 4px; cursor: help; }
 .kw.buff { color: var(--green); }
-.card-faction { font-size: 10px; color: var(--blue); text-align: center; cursor: help; }
+.card-faction { font-size: 9px; text-align: center; cursor: help; letter-spacing: 1px; opacity: .85; }
+.faction-wuying .card-faction { color: #b07fd8; }
+.faction-tieji .card-faction { color: #d4a017; }
+.faction-wudu .card-faction { color: #3cb896; }
+.faction-tianji .card-faction { color: #6ab4d8; }
+.faction-neutral .card-faction { color: var(--dim); }
 
 /* 悬停规则说明：关键词 / 门派 / 传功标签共用 */
 [data-tip] { position: relative; }
@@ -200,7 +209,14 @@ input:focus, select:focus { border-color: var(--amber); }
 .stat-hp { color: var(--green); font-weight: bold; }
 .stat-hp.hurt { color: var(--red); }
 .unit-sick { position: absolute; top: 4px; right: 4px; font-size: 10px; color: var(--dim); }
-.slot.unit.facedown { border-style: dashed; opacity: .92; }
+.slot.unit.facedown {
+  border-style: dashed; border-color: rgba(200,170,100,.3); opacity: .92;
+  background: linear-gradient(135deg, #1e2128, #16181e);
+}
+.slot.unit.facedown::after {
+  content: '?'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 22px; color: rgba(200,170,100,.4); font-weight: bold;
+}
 
 /* 埋伏区 */
 .trap-count { font-size: 12px; color: var(--dim); }
@@ -238,26 +254,74 @@ input:focus, select:focus { border-color: var(--amber); }
 }
 .card-back-fallback::after { content: '◆'; color: var(--dim); font-size: 16px; }
 
-/* 手牌 */
+/* ?????????? */
 .hand { display: flex; gap: 8px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }
 .hand-card {
-  width: 108px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 6px; position: relative; cursor: pointer; transition: transform .12s, border-color .12s;
+  width: 112px; border-radius: 10px; overflow: hidden;
+  padding: 0; position: relative; cursor: pointer;
+  transition: transform .12s, border-color .12s, box-shadow .12s;
+  background: linear-gradient(170deg, #22252e 0%, #1a1d24 60%, #16181e 100%);
+  border: 1px solid rgba(200,170,100,.25);
+  box-shadow: inset 0 0 0 1px rgba(200,170,100,.06), 0 2px 8px rgba(0,0,0,.4);
 }
-.hand-card:hover { transform: translateY(-6px); border-color: var(--amber); }
-.hand-card.selected { border-color: var(--blue); box-shadow: 0 0 12px rgba(92,157,224,.6); transform: translateY(-6px); }
+/* ??????? 3px? */
+.hand-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 2;
+}
+.hand-card.faction-wuying::before { background: linear-gradient(90deg, #7b4fa0, #a06fd0); }
+.hand-card.faction-tieji::before { background: linear-gradient(90deg, #b8860b, #d4a017); }
+.hand-card.faction-wudu::before { background: linear-gradient(90deg, #1f7a5e, #3cb896); }
+.hand-card.faction-tianji::before { background: linear-gradient(90deg, #3a7fa8, #6ab4d8); }
+.hand-card.faction-neutral::before { background: linear-gradient(90deg, #5a5a4e, #8a8a7a); }
+/* ????? */
+.hand-card.faction-wuying { border-color: rgba(123,79,160,.4); }
+.hand-card.faction-tieji { border-color: rgba(184,134,11,.4); }
+.hand-card.faction-wudu { border-color: rgba(45,138,110,.4); }
+.hand-card.faction-tianji { border-color: rgba(74,144,184,.4); }
+/* ??/??/?????? */
+.hand-card.kind-spell { border-style: solid; }
+.hand-card.kind-buff { border-style: double; border-width: 2px; }
+.hand-card.kind-trap { border-style: dashed; }
+.hand-card:hover { transform: translateY(-6px); border-color: var(--amber); box-shadow: 0 4px 16px rgba(232,179,75,.2); }
+.hand-card.selected { border-color: #6ab4d8; box-shadow: 0 0 14px rgba(106,180,216,.5); transform: translateY(-6px); }
 .hand-card.disabled { opacity: .45; cursor: not-allowed; }
-.hand-card.disabled:hover { transform: none; border-color: var(--border); }
+.hand-card.disabled:hover { transform: none; border-color: rgba(200,170,100,.25); box-shadow: none; }
+/* ????????? */
 .card-cost {
-  position: absolute; top: -6px; left: -6px; width: 24px; height: 24px; border-radius: 50%;
-  background: var(--blue); color: #fff; font-weight: bold; font-size: 13px;
-  display: flex; align-items: center; justify-content: center; z-index: 1;
+  position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #b8f0d8, #4a9a7a, #2d6b52);
+  color: #fff; font-weight: bold; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; z-index: 3;
+  border: 2px solid rgba(184,240,216,.5);
+  box-shadow: 0 0 8px rgba(74,154,122,.5), inset 0 -2px 4px rgba(0,0,0,.3);
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
-.card-art { width: 100%; height: 44px; border-radius: 6px; }
-.card-art-fallback { font-size: 30px; }
-.card-name { font-size: 13px; font-weight: bold; text-align: center; margin-top: 4px; }
-.card-desc { font-size: 10px; color: var(--dim); text-align: center; margin-top: 2px; line-height: 1.4; min-height: 28px; }
-.card-stats { display: flex; justify-content: space-between; padding: 0 4px; margin-top: 4px; }
+/* ???????????? */
+.card-art { width: 100%; height: 62px; object-fit: cover; display: block; }
+.card-art-fallback { font-size: 30px; display: flex; align-items: center; justify-content: center; height: 62px; }
+/* ???????????? */
+.card-name {
+  font-size: 12px; font-weight: bold; text-align: center;
+  margin-top: -18px; position: relative; z-index: 1;
+  background: linear-gradient(transparent, rgba(18,20,26,.92) 40%);
+  padding: 10px 4px 3px; letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+.card-desc { font-size: 10px; color: var(--dim); text-align: center; margin-top: 2px; line-height: 1.4; min-height: 26px; padding: 0 5px; }
+/* ?/??? */
+.card-stats { display: flex; justify-content: space-between; padding: 2px 8px 6px; margin-top: 2px; }
+.card-stats .stat-atk {
+  color: #e8b34b; font-weight: bold; font-size: 13px;
+  background: rgba(232,179,75,.12); border: 1px solid rgba(232,179,75,.3);
+  border-radius: 4px; padding: 0 7px; line-height: 1.5;
+}
+.card-stats .stat-hp {
+  color: #e05c5c; font-weight: bold; font-size: 13px;
+  background: rgba(224,92,92,.12); border: 1px solid rgba(224,92,92,.3);
+  border-radius: 4px; padding: 0 7px; line-height: 1.5;
+}
+/* ????? */
+.hand-card .unit-kws { padding: 0 6px 6px; }
 
 /* ---------- 战斗动效 ---------- */
 @keyframes fx-spawn { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
