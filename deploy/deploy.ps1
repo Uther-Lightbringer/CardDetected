@@ -15,19 +15,19 @@ if ($dirty) {
 }
 
 # 打包源码到临时文件（避免 PowerShell 管道传二进制损坏）
-$archive = Join-Path $env:TEMP "cardetect-deploy-$([guid]::NewGuid().ToString('N')).tar.gz"
+$archive = Join-Path $env:TEMP "carddetect-deploy.tar.gz"
 Write-Host "== 打包源码（git archive HEAD）=="
-git archive --format=tar.gz -o $archive HEAD
+git archive --format=tar.gz -o "$archive" HEAD
 if ($LASTEXITCODE -ne 0) { throw "git archive 失败" }
 Write-Host "   包大小: $([math]::Round((Get-Item $archive).Length / 1KB)) KB"
 
 try {
     # 上传（用绝对路径避免 ~ 展开问题）
     Write-Host "== 传输到 ${REMOTE}:~/$DIR =="
-    scp $archive "${REMOTE}:/root/carddetect-deploy.tar.gz"
+    scp "$archive" "${REMOTE}:/root/carddetect-deploy.tar.gz"
     if ($LASTEXITCODE -ne 0) { throw "scp 上传失败" }
 
-    # 远端解压 + 构建（单引号防止 PowerShell 展开变量）
+    # 远端解压 + 构建（用绝对路径）
     Write-Host "== 远端构建并重启容器 =="
     ssh $REMOTE "mkdir -p /root/$DIR && tar -xzf /root/carddetect-deploy.tar.gz -C /root/$DIR && rm /root/carddetect-deploy.tar.gz && cd /root/$DIR && docker compose down && docker compose up -d --build"
     if ($LASTEXITCODE -ne 0) { throw "远端构建失败" }
