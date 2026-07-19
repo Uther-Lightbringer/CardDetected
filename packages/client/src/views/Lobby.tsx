@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import type { RoomInfo } from '@cardetect/shared';
 import type { WsClient } from '../net';
 import { defaultDeck, lastSave } from '../saves';
@@ -72,7 +72,7 @@ export default function Lobby({
         </div>
 
         <div className="form-actions">
-          <button className="btn btn-ghost" onClick={onBack}>? ??</button>
+          <button className="btn btn-ghost" onClick={onBack}>返回</button>
           <button className="btn btn-ghost" onClick={onLogout}>退出登录</button>
         </div>
       </div>
