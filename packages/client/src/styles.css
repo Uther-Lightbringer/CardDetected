@@ -258,7 +258,7 @@ input:focus, select:focus { border-color: var(--amber); }
 
 /* hover 大卡：固定定位，左下角对齐鼠标点，展示完整卡牌信息 */
 .unit-tooltip {
-  position: fixed; z-index: 100; pointer-events: none;
+  position: fixed; z-index: 100;
 }
 .tooltip-card {
   width: 152px; min-height: 235px; border-radius: 10px; overflow: hidden; position: relative;
