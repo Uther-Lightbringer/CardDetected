@@ -18,7 +18,13 @@ body {
   background: var(--bg); color: var(--text);
   overflow: hidden;
 }
-.app { height: 100%; }
+.app { height: 100%; position: relative; overflow: hidden; }
+/* 游戏画布：固定设计分辨率 1280×720，由 JS 等比缩放居中，保证所有界面比例与相对位置不变 */
+.game-canvas {
+  width: 1280px; height: 720px; position: absolute; left: 50%; top: 50%;
+  transform-origin: center center; overflow: hidden;
+  background: var(--bg); border-radius: 0;
+}
 button { font-family: inherit; cursor: pointer; }
 input, select {
   background: var(--bg); border: 1px solid var(--border); color: var(--text);

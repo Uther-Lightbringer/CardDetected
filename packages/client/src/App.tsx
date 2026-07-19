@@ -61,6 +61,19 @@ export default function App(): JSX.Element {
   const [currentSave, setCurrentSave] = useState<SaveProfile | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [exited, setExited] = useState(false);
+  /** 画布缩放：将 1280×720 设计分辨率等比缩放居中，视口压缩时整体缩小而非挤变形 */
+  const canvasRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const DESIGN_W = 1280; const DESIGN_H = 720;
+    const resize = () => {
+      const el = canvasRef.current; if (!el) return;
+      const scale = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H, 1);
+      el.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
   /** 页面加载时自动恢复登录中（显示加载指示） */
   const [connecting, setConnecting] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -467,6 +480,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
+      <div className="game-canvas" ref={canvasRef}>
       {connecting && (
         <div className="page">
           <div className="page-card" style={{ textAlign: 'center' }}>
@@ -531,6 +545,7 @@ export default function App(): JSX.Element {
         />
       )}
       {!connecting && screen === 'battle' && battle && <Battle session={battle} onExit={exitBattle} toast={toast} />}
+      </div>
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </div>
   );
