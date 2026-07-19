@@ -161,7 +161,14 @@ export default function App(): JSX.Element {
           setScreen((s) => (s === 'room' ? 'lobby' : s));
           return;
         }
-        if (!resumePendingRef.current) return;
+        if (!resumePendingRef.current) {
+          // 正常流程：创建/加入/有人加入房间 → 切到房间界面
+          // 已在 battle 时不切（对局结束由 exitBattle 控制）；playing 由 game_start 处理
+          if (m.room.state === 'waiting') {
+            setScreen((s) => (s === 'battle' ? s : 'room'));
+          }
+          return;
+        }
         // 断线重连找回房间：等待中回房间；对局中重建 RemoteAdapter 回战场
         resumePendingRef.current = false;
         const me = userRef.current?.username;

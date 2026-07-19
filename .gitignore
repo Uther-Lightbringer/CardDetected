@@ -8,3 +8,7 @@ packages/server/data/
 
 # 本地私有部署记录（含服务器地址/凭据，不进 git）
 DEPLOY.local.md
+
+# 皮肤资产管线产物（原图备份 + 预览图，不入库）
+assets/skin-originals/
+assets/skin-previews/
