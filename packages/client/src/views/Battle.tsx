@@ -509,15 +509,12 @@ export default function Battle({
             {aiBubble && <div key={aiBubble.id} className="speech-bubble">{aiBubble.text}</div>}
           </div>
           <div className="hand opp-hand">
-            {Array.from({ length: view.opp.handCount }, (_, i) => {
-              // 扇形展开：以最中间一张为轴，两侧逐级外旋（牌背上缘对齐、下缘散开）
-              const rot = (i - (view.opp.handCount - 1) / 2) * 5;
-              return (
-                <span key={i} className="card-back-fan" style={{ transform: `rotate(${rot}deg)` }}>
-                  <SkinImage skinKey="card_back" alt="牌背" className="card-back" fallback={<span className="card-back-fallback" />} />
-                </span>
-              );
-            })}
+            {Array.from({ length: view.opp.handCount }, (_, i) => (
+              // 平铺叠放：不旋转，上缘对齐，均匀压缩占位
+              <span key={i} className="card-back-tile">
+                <SkinImage skinKey="card_back" alt="牌背" className="card-back" fallback={<span className="card-back-fallback" />} />
+              </span>
+            ))}
           </div>
           <div className={`hero-side right ${combatFx && combatFx.target === 'player' && !combatFx.attackerEnemy ? 'fx-shake' : ''}`}>
             <div className="hero-numbers">

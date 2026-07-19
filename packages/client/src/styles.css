@@ -154,12 +154,22 @@ input:focus, select:focus { border-color: var(--amber); }
 .mid-banner { text-align: center; font-size: 13px; color: var(--amber); letter-spacing: 2px; padding: 2px 0; }
 
 .slot {
-  width: 96px; border-radius: 10px; border: 1px solid var(--border);
+  width: 96px; min-height: 104px; border-radius: 10px; border: 1px solid var(--border);
   background: rgba(28,32,41,.85); position: relative; display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 6px 4px; transition: box-shadow .15s, border-color .15s;
 }
 .slot.unit { animation: fx-spawn .3s ease-out; }
-.slot.empty { background: rgba(20,22,29,.5); border-style: dashed; }
+/* 空部署位：与卡牌同高，渐变底 + 内阴影 + 淡淡水印，可部署时水印让位给绿色提示 */
+.slot.empty {
+  background: linear-gradient(160deg, rgba(32,37,50,.5), rgba(17,19,26,.6));
+  border: 1px dashed #303747;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,.35);
+}
+.slot.empty::before {
+  content: '✦'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #2e3547; font-size: 20px; pointer-events: none;
+}
+.slot.empty.droppable::before { content: ''; }
 .slot.droppable { border-color: var(--green); box-shadow: 0 0 10px rgba(75,216,162,.35); cursor: pointer; }
 .slot-hint { color: var(--green); font-size: 11px; }
 .slot.unit.targetable { border-color: var(--red); box-shadow: 0 0 12px rgba(224,92,92,.5); cursor: crosshair; }
@@ -214,10 +224,10 @@ input:focus, select:focus { border-color: var(--amber); }
 
 /* 对手三段式：可被攻击时两侧面板高亮 */
 .opp-zone.targetable .hero-side { border-color: var(--red); box-shadow: 0 0 12px rgba(224,92,92,.4); cursor: crosshair; }
-/* 对手手牌：大牌背 + 扇形展开（尺寸接近我方手牌，叠放压缩占位） */
+/* 对手手牌：大牌背 + 平铺叠放（不旋转，叠放压缩占位） */
 .opp-hand { align-items: flex-start; flex-wrap: nowrap; height: 118px; overflow: visible; }
-.card-back-fan { transform-origin: top center; margin-right: -40px; flex-shrink: 0; }
-.card-back-fan:last-child { margin-right: 0; }
+.card-back-tile { margin-right: -40px; flex-shrink: 0; }
+.card-back-tile:last-child { margin-right: 0; }
 .card-back {
   display: block; width: 78px; height: 110px; border-radius: 8px; object-fit: cover;
   border: 1px solid var(--border); box-shadow: 0 3px 8px rgba(0, 0, 0, .45);
