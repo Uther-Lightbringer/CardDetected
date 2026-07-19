@@ -78,7 +78,7 @@ export default function Battle({
   /** AI 台词气泡（显示在对手头像旁，几秒后自动消失） */
   const [aiBubble, setAiBubble] = useState<{ id: number; text: string } | null>(null);
   const viewRef = useRef<GameView | null>(null);
-  /** hover 大卡：鼠标悬停单位卡 0.5s 后弹出，锚定在进入点，移出即消 */
+  /** hover 大卡：鼠标悬停单位卡 0.5s 后弹出，锚定在进入点；鼠标移到大卡上则保持显示，同时离开单位卡与大卡才消失 */
   interface UnitTooltipInfo { unit: UnitState; x: number; y: number }
   const [unitTooltip, setUnitTooltip] = useState<UnitTooltipInfo | null>(null);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,9 +88,16 @@ export default function Battle({
       setUnitTooltip({ unit, x: e.clientX, y: e.clientY });
     }, 500);
   };
+  /** 离开单位卡：延迟 150ms 再隐藏，给鼠标滑向大卡留出时间 */
   const hideUnitTooltip = (): void => {
     tooltipTimerRef.current && clearTimeout(tooltipTimerRef.current);
-    setUnitTooltip(null);
+    tooltipTimerRef.current = setTimeout(() => {
+      setUnitTooltip(null);
+    }, 150);
+  };
+  /** 进入大卡：取消隐藏计时，大卡保持显示 */
+  const cancelHideUnitTooltip = (): void => {
+    tooltipTimerRef.current && clearTimeout(tooltipTimerRef.current);
   };
   const fxIdRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -709,14 +716,18 @@ export default function Battle({
       {unitTooltip && (() => {
         const def = CARDS[unitTooltip.unit.cardId];
         if (!def) return null;
-        const CARD_W = 152; const CARD_H = 210;
+        const CARD_W = 152; const CARD_H = 235;
         let x = unitTooltip.x + 14;
         let y = unitTooltip.y - CARD_H;
         if (x + CARD_W > window.innerWidth - 6) x = unitTooltip.x - CARD_W - 14;
         if (y < 6) y = 6;
         return (
           <div className="unit-tooltip" style={{ left: x, top: y }}>
-            <div className={`tooltip-card ${def.faction ? `faction-${def.faction}` : 'faction-neutral'}`}>
+            <div
+              className={`tooltip-card ${def.faction ? `faction-${def.faction}` : 'faction-neutral'}`}
+              onMouseEnter={cancelHideUnitTooltip}
+              onMouseLeave={hideUnitTooltip}
+            >
               <div className="card-cost">{def.cost}</div>
               <SkinImage skinKey={def.art ?? ''} alt={def.name} className="card-art"
                 fallback={<span className="card-art-fallback">{def.kind === 'unit' ? '🗡️' : '📜'}</span>} />

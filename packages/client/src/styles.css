@@ -154,7 +154,7 @@ input:focus, select:focus { border-color: var(--amber); }
 .mid-banner { text-align: center; font-size: 13px; color: var(--amber); letter-spacing: 2px; padding: 2px 0; }
 
 .slot {
-  width: 96px; min-height: 104px; border-radius: 10px; border: 1px solid var(--border);
+  width: 80px; min-height: 124px; border-radius: 10px; border: 1px solid var(--border);
   background: rgba(28,32,41,.85); position: relative; display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 6px 4px; transition: box-shadow .15s, border-color .15s;
 }
@@ -190,11 +190,11 @@ input:focus, select:focus { border-color: var(--amber); }
   border-radius: 6px;
 }
 .unit-art {
-  width: 82px; height: 82px; border-radius: 8px; object-fit: cover;
+  width: 64px; height: 64px; border-radius: 8px; object-fit: cover;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,.55));
   transition: transform .2s ease, filter .2s ease;
 }
-.unit-art-fallback { font-size: 36px; line-height: 1; }
+.unit-art-fallback { font-size: 28px; line-height: 1; }
 .slot.unit.ready:hover .unit-art { transform: scale(1.05); filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)) brightness(1.06); }
 /* 活单位减少内边距，让立绘撑满卡牌 */
 .slot.unit:not(.facedown) { padding: 3px; overflow: hidden; }
@@ -261,7 +261,7 @@ input:focus, select:focus { border-color: var(--amber); }
   position: fixed; z-index: 100; pointer-events: none;
 }
 .tooltip-card {
-  width: 152px; border-radius: 10px; overflow: hidden; position: relative;
+  width: 152px; min-height: 235px; border-radius: 10px; overflow: hidden; position: relative;
   background: linear-gradient(170deg, #22252e 0%, #1a1d24 60%, #16181e 100%);
   border: 1px solid rgba(200,170,100,.28);
   box-shadow: 0 6px 24px rgba(0,0,0,.65), inset 0 0 0 1px rgba(200,170,100,.07);
@@ -288,11 +288,11 @@ input:focus, select:focus { border-color: var(--amber); }
   box-shadow: 0 0 6px rgba(74,154,122,.5);
   text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
-.tooltip-card .card-art { width: 100%; height: 86px; object-fit: cover; display: block; }
-.tooltip-card .card-art-fallback { font-size: 36px; display: flex; align-items: center; justify-content: center; height: 86px; }
+.tooltip-card .card-art { width: 100%; height: 110px; object-fit: cover; display: block; }
+.tooltip-card .card-art-fallback { font-size: 42px; display: flex; align-items: center; justify-content: center; height: 110px; }
 .tooltip-card .card-name {
   font-size: 12px; font-weight: bold; text-align: center;
-  margin-top: -20px; position: relative; z-index: 1;
+  margin-top: -28px; position: relative; z-index: 1;
   background: linear-gradient(transparent, rgba(18,20,26,.94) 40%);
   padding: 12px 5px 3px; letter-spacing: 1px;
   text-shadow: 0 1px 3px rgba(0,0,0,.8);
@@ -334,11 +334,11 @@ input:focus, select:focus { border-color: var(--amber); }
 /* 对手三段式：可被攻击时两侧面板高亮 */
 .opp-zone.targetable .hero-side { border-color: var(--red); box-shadow: 0 0 12px rgba(224,92,92,.4); cursor: crosshair; }
 /* 对手手牌：大牌背 + 平铺叠放（不旋转，叠放压缩占位） */
-.opp-hand { align-items: flex-start; flex-wrap: nowrap; height: 118px; overflow: visible; }
+.opp-hand { align-items: flex-start; flex-wrap: nowrap; height: 130px; overflow: visible; }
 .card-back-tile { margin-right: -40px; flex-shrink: 0; }
 .card-back-tile:last-child { margin-right: 0; }
 .card-back {
-  display: block; width: 78px; height: 110px; border-radius: 8px; object-fit: cover;
+  display: block; width: 78px; height: 120px; border-radius: 8px; object-fit: cover;
   border: 1px solid var(--border); box-shadow: 0 3px 8px rgba(0, 0, 0, .45);
 }
 .card-back-fallback {
@@ -350,7 +350,7 @@ input:focus, select:focus { border-color: var(--amber); }
 /* ?????????? */
 .hand { display: flex; gap: 8px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }
 .hand-card {
-  width: 112px; border-radius: 10px; overflow: hidden;
+  width: 112px; min-height: 174px; border-radius: 10px; overflow: hidden;
   padding: 0; position: relative; cursor: pointer;
   transition: transform .12s, border-color .12s, box-shadow .12s;
   background: linear-gradient(170deg, #22252e 0%, #1a1d24 60%, #16181e 100%);
@@ -390,12 +390,12 @@ input:focus, select:focus { border-color: var(--amber); }
   text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
 /* ???????????? */
-.card-art { width: 100%; height: 62px; object-fit: cover; display: block; }
-.card-art-fallback { font-size: 30px; display: flex; align-items: center; justify-content: center; height: 62px; }
+.card-art { width: 100%; height: 80px; object-fit: cover; display: block; }
+.card-art-fallback { font-size: 36px; display: flex; align-items: center; justify-content: center; height: 80px; }
 /* ???????????? */
 .card-name {
   font-size: 12px; font-weight: bold; text-align: center;
-  margin-top: -18px; position: relative; z-index: 1;
+  margin-top: -22px; position: relative; z-index: 1;
   background: linear-gradient(transparent, rgba(18,20,26,.92) 40%);
   padding: 10px 4px 3px; letter-spacing: 1px;
   text-shadow: 0 1px 3px rgba(0,0,0,.8);
