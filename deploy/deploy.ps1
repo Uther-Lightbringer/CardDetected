@@ -1,4 +1,4 @@
-# 一键部署到云服务器（Windows PowerShell 版）
+﻿# 一键部署到云服务器（Windows PowerShell 版）
 # 用法：npm run deploy
 #       $env:DEPLOY_HOST='xxx'; $env:DEPLOY_DIR='/opt/xx'; npm run deploy
 param()
@@ -29,7 +29,7 @@ try {
 
     # 远端解压 + 构建
     Write-Host "== 远端构建并重启容器 =="
-    ssh $REMOTE "mkdir -p /root/$DIR && unzip -o /root/cardetect-deploy.zip -d /root/$DIR && rm /root/carddetect-deploy.zip && cd /root/$DIR && docker compose down && docker compose up -d --build"
+    ssh $REMOTE "mkdir -p /root/$DIR && unzip -o /root/cardetect-deploy.zip -d /root/$DIR && rm -f /root/cardetect-deploy.zip && cd /root/$DIR && docker compose down && docker compose up -d --build"
     if ($LASTEXITCODE -ne 0) { throw "远端构建失败" }
 
     Write-Host "== 完成 ==" -ForegroundColor Green
