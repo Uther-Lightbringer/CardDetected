@@ -78,6 +78,20 @@ export default function Battle({
   /** AI 台词气泡（显示在对手头像旁，几秒后自动消失） */
   const [aiBubble, setAiBubble] = useState<{ id: number; text: string } | null>(null);
   const viewRef = useRef<GameView | null>(null);
+  /** hover 大卡：鼠标悬停单位卡 0.5s 后弹出，锚定在进入点，移出即消 */
+  interface UnitTooltipInfo { unit: UnitState; x: number; y: number }
+  const [unitTooltip, setUnitTooltip] = useState<UnitTooltipInfo | null>(null);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showUnitTooltip = (e: React.MouseEvent, unit: UnitState): void => {
+    tooltipTimerRef.current && clearTimeout(tooltipTimerRef.current);
+    tooltipTimerRef.current = setTimeout(() => {
+      setUnitTooltip({ unit, x: e.clientX, y: e.clientY });
+    }, 500);
+  };
+  const hideUnitTooltip = (): void => {
+    tooltipTimerRef.current && clearTimeout(tooltipTimerRef.current);
+    setUnitTooltip(null);
+  };
   const fxIdRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -401,21 +415,14 @@ export default function Battle({
       <div
         className={`slot unit ${opts.highlight ? 'targetable' : ''} ${opts.selected ? 'selected' : ''} ${idle ? 'idle' : ''} ${opts.mine && myTurn && !idle ? 'ready' : ''} ${opts.extraClass ?? ''}`}
         onClick={opts.onClick}
-        title={def?.desc}
+        onMouseEnter={def ? (e) => showUnitTooltip(e, unit) : undefined}
+        onMouseLeave={hideUnitTooltip}
       >
-        <SkinImage skinKey={def?.art ?? ''} alt={unit.name} className="unit-art" fallback={<span className="unit-art-fallback">🂠</span>} />
-        <div className="unit-name">{unit.name}</div>
-        {unit.keywords.length > 0 && (
-          <div className="unit-kws">{unit.keywords.map((k) => <KwTag key={k} kw={k} />)}</div>
-        )}
-        {unit.buffs.length > 0 && (
-          <div className="unit-kws">
-            {unit.buffs.map((b, bi) => (
-              <span key={bi} className="kw buff" data-tip={CARDS[b.cardId]?.desc ?? ''}>{b.name}</span>
-            ))}
-          </div>
-        )}
-        <div className="unit-stats">
+        {def?.cost != null && <div className="unit-cost">{def.cost}</div>}
+        <div className="unit-art-wrap">
+          <SkinImage skinKey={def?.art ?? ''} alt={unit.name} className="unit-art" fallback={<span className="unit-art-fallback">🂠</span>} />
+        </div>
+        <div className="unit-stats-bar">
           <span className="stat-atk">{unit.atk}</span>
           <span className={unit.hp < unit.maxHp ? 'stat-hp hurt' : 'stat-hp'}>{unit.hp}</span>
         </div>
@@ -697,6 +704,49 @@ export default function Battle({
           </div>
         </div>
       )}
+
+      {/* hover 大卡：左下角对齐鼠标进入点，展示完整卡牌信息 */}
+      {unitTooltip && (() => {
+        const def = CARDS[unitTooltip.unit.cardId];
+        if (!def) return null;
+        const CARD_W = 152; const CARD_H = 210;
+        let x = unitTooltip.x + 14;
+        let y = unitTooltip.y - CARD_H;
+        if (x + CARD_W > window.innerWidth - 6) x = unitTooltip.x - CARD_W - 14;
+        if (y < 6) y = 6;
+        return (
+          <div className="unit-tooltip" style={{ left: x, top: y }}>
+            <div className={`tooltip-card ${def.faction ? `faction-${def.faction}` : 'faction-neutral'}`}>
+              <div className="card-cost">{def.cost}</div>
+              <SkinImage skinKey={def.art ?? ''} alt={def.name} className="card-art"
+                fallback={<span className="card-art-fallback">{def.kind === 'unit' ? '🗡️' : '📜'}</span>} />
+              <div className="card-name">{def.name}</div>
+              {def.faction && (
+                <div className="card-faction" data-tip={FACTION_DEFS[def.faction].desc}>
+                  {FACTION_DEFS[def.faction].name}
+                </div>
+              )}
+              <div className="card-desc">{def.desc}</div>
+              {def.kind === 'unit' && (
+                <div className="card-stats">
+                  <span className="stat-atk">{unitTooltip.unit.atk}</span>
+                  <span className="stat-hp">{unitTooltip.unit.hp}</span>
+                </div>
+              )}
+              {def.kind === 'unit' && def.keywords && def.keywords.length > 0 && (
+                <div className="unit-kws">{def.keywords.map((k) => <KwTag key={k} kw={k} />)}</div>
+              )}
+              {unitTooltip.unit.buffs.length > 0 && (
+                <div className="unit-kws">
+                  {unitTooltip.unit.buffs.map((b, bi) => (
+                    <span key={bi} className="kw buff" data-tip={CARDS[b.cardId]?.desc ?? ''}>{b.name}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
